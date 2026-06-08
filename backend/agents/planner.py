@@ -1,13 +1,38 @@
+from llm.base import BaseLLMProvider
+from llm.mock import MockLLMProvider
 from models.reasoning import ReasoningState, ReasoningTask
 
 
 class PlannerNode:
     """Creates structured reasoning tasks from the user question."""
 
-    def __call__(self, state: ReasoningState) -> ReasoningState:
-        return state.copy(update={"reasoning_tasks": self._plan(state.question)})
+    def __init__(self, provider: BaseLLMProvider | None = None) -> None:
+        self.provider = provider or MockLLMProvider()
 
-    def _plan(self, question: str) -> list[ReasoningTask]:
+    def __call__(self, state: ReasoningState) -> ReasoningState:
+        fallback_tasks = self._fallback_plan(state.question)
+        fallback = {"tasks": [task.dict() for task in fallback_tasks]}
+        payload = self.provider.complete_json(
+            system_prompt=(
+                "You are the ConsensusIQ planner. Decompose the user's question "
+                "into concise, non-overlapping reasoning tasks for specialist agents."
+            ),
+            user_prompt=(
+                f"Question: {state.question}\n\n"
+                "Return JSON with key 'tasks'. Each task must include id, "
+                "description, owner, and priority. Owners must be one of: "
+                "Risk Analyst Agent, Evidence Analyst Agent, Alternative Solutions Agent."
+            ),
+            fallback=fallback,
+        )
+        try:
+            tasks = [ReasoningTask.parse_obj(task) for task in payload["tasks"]]
+        except Exception:
+            tasks = fallback_tasks
+
+        return state.copy(update={"reasoning_tasks": tasks})
+
+    def _fallback_plan(self, question: str) -> list[ReasoningTask]:
         normalized = question.lower()
         if all(term in normalized for term in ["seizure", "mri", "lp"]):
             return [

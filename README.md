@@ -28,6 +28,26 @@ If your Python distribution creates a Unix-style venv on Windows, use `.venv\bin
 
 LangGraph is listed in `backend/requirements-agents.txt`. The graph runner uses LangGraph when installed and falls back to a deterministic local graph runner when native package wheels are unavailable. OpenAI/Azure SDK integration starts from `backend/requirements-azure.txt`.
 
+### Azure OpenAI
+
+The backend uses a provider factory. If all Azure variables are present and the optional SDK is installed, agents use Azure OpenAI. If Azure is missing, times out, returns invalid JSON, or the SDK is unavailable, ConsensusIQ falls back to the mock provider and keeps the API response stable.
+
+```bash
+cd backend
+pip install -r requirements-azure.txt
+```
+
+Set these in `backend/.env`:
+
+```bash
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+AZURE_OPENAI_API_VERSION=2024-10-21
+```
+
+No Foundry IQ integration is required yet; retrieval remains mocked.
+
 The API runs at `http://localhost:8000`.
 
 ### Frontend

@@ -45,6 +45,13 @@ class Disagreement(BaseModel):
     suggested_resolution: str
 
 
+class ConsensusJudgment(BaseModel):
+    consensus: str
+    confidence_score: float = Field(..., ge=0, le=1)
+    agreement_score: float = Field(..., ge=0, le=1)
+    reasoning_summary: str
+
+
 class ReasoningState(BaseModel):
     question: str
     retrieved_context: list[RetrievedContext] = Field(default_factory=list)

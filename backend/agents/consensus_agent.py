@@ -1,4 +1,7 @@
-from models.reasoning import ReasoningState
+from agents.prompting import agent_outputs_payload, disagreements_payload
+from llm.base import BaseLLMProvider
+from llm.mock import MockLLMProvider
+from models.reasoning import ConsensusJudgment, ReasoningState
 from reasoning.disagreement import DisagreementDetector
 
 
@@ -9,7 +12,12 @@ class ConsensusJudgeNode:
     disagreement detection has produced auditable inputs for the final judgment.
     """
 
-    def __init__(self, detector: DisagreementDetector | None = None) -> None:
+    def __init__(
+        self,
+        provider: BaseLLMProvider | None = None,
+        detector: DisagreementDetector | None = None,
+    ) -> None:
+        self.provider = provider or MockLLMProvider()
         self.detector = detector or DisagreementDetector()
 
     def __call__(self, state: ReasoningState) -> ReasoningState:
@@ -23,23 +31,49 @@ class ConsensusJudgeNode:
         )
         confidence_score = round((avg_confidence * 0.7) + (agreement_score * 0.3), 2)
 
-        consensus = (
-            "Consensus recommendation: proceed with a phased, evidence-tracked "
-            f"approach to '{state.question}'. The evidence analyst supports the "
-            "direction, the risk analyst requires explicit gates, and the "
-            "alternatives analyst recommends limiting initial scope before broader "
-            "commitment."
+        state_with_disagreements = state.copy(update={"disagreements": disagreements})
+        fallback_judgment = ConsensusJudgment(
+            consensus=(
+                "Consensus recommendation: proceed with a phased, evidence-tracked "
+                f"approach to '{state.question}'. The evidence analyst supports the "
+                "direction, the risk analyst requires explicit gates, and the "
+                "alternatives analyst recommends limiting initial scope before broader "
+                "commitment."
+            ),
+            confidence_score=confidence_score,
+            agreement_score=agreement_score,
+            reasoning_summary=self._build_reasoning_summary(
+                state_with_disagreements, disagreements
+            ),
         )
+        payload = self.provider.complete_json(
+            system_prompt=(
+                "You are the ConsensusIQ Consensus Judge. Synthesize independent "
+                "specialist outputs and the disagreement report into a transparent, "
+                "decision-ready recommendation. Preserve uncertainty."
+            ),
+            user_prompt=(
+                f"Question: {state.question}\n\n"
+                f"Agent outputs:\n{agent_outputs_payload(state)}\n\n"
+                f"Disagreements:\n{disagreements_payload(state_with_disagreements)}\n\n"
+                "Return JSON with keys: consensus, confidence_score, "
+                "agreement_score, reasoning_summary. Scores must be numbers "
+                "between 0 and 1."
+            ),
+            fallback=fallback_judgment.dict(),
+        )
+        try:
+            judgment = ConsensusJudgment.parse_obj(payload)
+        except Exception:
+            judgment = fallback_judgment
 
         return state.copy(
             update={
                 "disagreements": disagreements,
-                "consensus": consensus,
-                "confidence_score": confidence_score,
-                "agreement_score": agreement_score,
-                "reasoning_summary": self._build_reasoning_summary(
-                    state, disagreements
-                ),
+                "consensus": judgment.consensus,
+                "confidence_score": judgment.confidence_score,
+                "agreement_score": judgment.agreement_score,
+                "reasoning_summary": judgment.reasoning_summary,
             }
         )
 

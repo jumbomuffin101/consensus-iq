@@ -31,7 +31,7 @@ User Question
   -> RetrievalNode
   -> PlannerNode
   -> RiskAnalystNode
-  -> EvidenceAnalystNode
+  -> EvidenceAnalystNode       (parallel specialist execution)
   -> AlternativesAnalystNode
   -> ConsensusJudgeNode
   -> Consensus Report
@@ -40,6 +40,22 @@ User Question
 `backend/reasoning/graph.py` owns orchestration. It uses LangGraph when the
 package is available, and a deterministic local graph runner otherwise so the
 mocked MVP remains runnable in constrained local Python environments.
+
+## LLM Providers
+
+Agents receive an injected provider from `backend/llm`.
+
+- `llm/base.py`: provider contract and resilient fallback wrapper.
+- `llm/azure_openai.py`: Azure OpenAI JSON completion provider with retries and
+  request timeout.
+- `llm/mock.py`: deterministic fallback provider.
+- `llm/factory.py`: reads `AZURE_OPENAI_*` environment variables and chooses the
+  provider.
+
+Specialist agents run concurrently after planning. Each receives the question,
+retrieved context, and planner tasks, and returns a validated `AgentOutput`.
+The consensus judge receives all specialist outputs plus the deterministic
+disagreement report.
 
 ## Node Responsibilities
 
@@ -68,7 +84,7 @@ agreement score used by the consensus judge.
 - Replace `retrieve_evidence` with Microsoft Foundry IQ retrieval while
   preserving `RetrievedContext`.
 - Replace mocked specialist node bodies with Azure OpenAI calls that return
-  `AgentOutput`.
+  `AgentOutput`; the provider abstraction already supports this.
 - Add more specialist nodes by registering them in `ConsensusReasoningGraph`.
 - Move sequential specialist execution to parallel graph branches once real
   latency and dependency needs are known.

@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, TypedDict
 
 from agents.alternatives_agent import AlternativesAnalystNode
@@ -5,6 +6,8 @@ from agents.consensus_agent import ConsensusJudgeNode
 from agents.evidence_agent import EvidenceAnalystNode
 from agents.planner import PlannerNode
 from agents.risk_agent import RiskAnalystNode
+from llm.base import BaseLLMProvider
+from llm.factory import create_llm_provider
 from models.reasoning import ReasoningState
 from retrieval.foundry import RetrievalNode
 
@@ -21,14 +24,21 @@ class ConsensusReasoningGraph:
     the mocked MVP runnable on Python distributions without native wheels.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, provider: BaseLLMProvider | None = None) -> None:
+        self.provider = provider or create_llm_provider()
+        self.retrieval_node = RetrievalNode()
+        self.planner_node = PlannerNode(self.provider)
+        self.specialist_nodes = [
+            RiskAnalystNode(self.provider),
+            EvidenceAnalystNode(self.provider),
+            AlternativesAnalystNode(self.provider),
+        ]
+        self.consensus_node = ConsensusJudgeNode(self.provider)
         self.nodes = [
-            ("retrieval", RetrievalNode()),
-            ("planner", PlannerNode()),
-            ("risk_analyst", RiskAnalystNode()),
-            ("evidence_analyst", EvidenceAnalystNode()),
-            ("alternatives_analyst", AlternativesAnalystNode()),
-            ("consensus_judge", ConsensusJudgeNode()),
+            ("retrieval", self.retrieval_node),
+            ("planner", self.planner_node),
+            ("specialists_parallel", self._run_specialists_parallel),
+            ("consensus_judge", self.consensus_node),
         ]
         self._compiled_graph = self._compile_langgraph()
 
@@ -53,10 +63,8 @@ class ConsensusReasoningGraph:
 
         graph.set_entry_point("retrieval")
         graph.add_edge("retrieval", "planner")
-        graph.add_edge("planner", "risk_analyst")
-        graph.add_edge("risk_analyst", "evidence_analyst")
-        graph.add_edge("evidence_analyst", "alternatives_analyst")
-        graph.add_edge("alternatives_analyst", "consensus_judge")
+        graph.add_edge("planner", "specialists_parallel")
+        graph.add_edge("specialists_parallel", "consensus_judge")
         graph.add_edge("consensus_judge", END)
         return graph.compile()
 
@@ -75,6 +83,33 @@ class ConsensusReasoningGraph:
         for _, node in self.nodes:
             current_state = node(current_state)
         return current_state
+
+    def _run_specialists_parallel(self, state: ReasoningState) -> ReasoningState:
+        outputs_by_agent: dict[str, Any] = {}
+
+        with ThreadPoolExecutor(max_workers=len(self.specialist_nodes)) as executor:
+            future_to_node = {
+                executor.submit(node, state): node for node in self.specialist_nodes
+            }
+            for future in as_completed(future_to_node):
+                try:
+                    next_state = future.result()
+                except Exception:
+                    continue
+
+                for output in next_state.agent_outputs:
+                    outputs_by_agent[output.agent] = output
+
+        ordered_outputs = [
+            outputs_by_agent[agent_name]
+            for agent_name in [
+                "Risk Analyst Agent",
+                "Evidence Analyst Agent",
+                "Alternative Solutions Agent",
+            ]
+            if agent_name in outputs_by_agent
+        ]
+        return state.copy(update={"agent_outputs": ordered_outputs})
 
 
 def analyze_question(question: str) -> ReasoningState:
