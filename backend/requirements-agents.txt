@@ -1,4 +1,4 @@
 # Optional future integration dependencies.
-# The MVP uses mocked agents and retrieval, so these are not required to run locally.
-langchain==0.1.20
+# The graph runner uses LangGraph when installed and a deterministic local
+# fallback otherwise so MSYS/Windows environments without native wheels still run.
 langgraph==0.0.55

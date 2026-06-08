@@ -2,21 +2,31 @@ export type AgentOutput = {
   agent: string;
   role: string;
   stance: "support" | "caution" | "alternative" | "synthesis";
-  summary: string;
-  confidence: number;
+  recommendation: string;
+  conclusion: string;
+  rationale: string[];
+  confidence_score: number;
   evidence_refs: string[];
+  missing_evidence: string[];
+  limitations: string[];
 };
 
 export type Disagreement = {
   topic: string;
+  kind:
+    | "conflicting_recommendation"
+    | "differing_confidence"
+    | "missing_evidence";
   positions: string[];
   severity: "low" | "medium" | "high";
+  suggested_resolution: string;
 };
 
 export type AnalyzeResponse = {
   consensus: string;
-  confidence: number;
+  confidence_score: number;
   agreement_score: number;
+  reasoning_summary: string;
   agent_outputs: AgentOutput[];
   disagreements: Disagreement[];
 };

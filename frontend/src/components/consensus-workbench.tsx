@@ -101,7 +101,7 @@ export function ConsensusWorkbench() {
                 <>
                   <p className="text-sm leading-6 text-foreground">{result.consensus}</p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Metric label="Confidence" value={asPercent(result.confidence)} />
+                    <Metric label="Confidence" value={asPercent(result.confidence_score)} />
                     <Metric label="Agreement" value={asPercent(result.agreement_score)} />
                   </div>
                 </>
@@ -130,9 +130,9 @@ export function ConsensusWorkbench() {
                     </Badge>
                   </div>
                   <p className="mb-3 text-xs leading-5 text-muted-foreground">{agent.role}</p>
-                  <p className="text-sm leading-6">{agent.summary}</p>
+                  <p className="text-sm leading-6">{agent.conclusion}</p>
                   <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Confidence {asPercent(agent.confidence)}</span>
+                    <span>Confidence {asPercent(agent.confidence_score)}</span>
                     <span>{agent.evidence_refs.join(", ")}</span>
                   </div>
                 </article>

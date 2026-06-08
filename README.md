@@ -2,7 +2,7 @@
 
 Evidence-based agent consensus platform for the Microsoft Agents League hackathon.
 
-ConsensusIQ demonstrates a grounded multi-agent reasoning workflow using mocked Foundry IQ retrieval and mocked agent collaboration. The current MVP is intentionally local-first and extensible, with Azure integration points isolated for later work.
+ConsensusIQ demonstrates a grounded multi-agent reasoning workflow using mocked Foundry IQ retrieval, typed shared state, graph-based agent orchestration, disagreement detection, and transparent consensus scoring. The current MVP is intentionally local-first and extensible, with Azure integration points isolated for later work.
 
 ## Stack
 
@@ -26,7 +26,7 @@ uvicorn main:app --reload --port 8000
 
 If your Python distribution creates a Unix-style venv on Windows, use `.venv\bin\Activate.ps1` instead.
 
-LangChain/LangGraph are listed in `backend/requirements-agents.txt`, and OpenAI/Azure SDK integration starts from `backend/requirements-azure.txt`. The MVP does not need them because retrieval and agent responses are mocked.
+LangGraph is listed in `backend/requirements-agents.txt`. The graph runner uses LangGraph when installed and falls back to a deterministic local graph runner when native package wheels are unavailable. OpenAI/Azure SDK integration starts from `backend/requirements-azure.txt`.
 
 The API runs at `http://localhost:8000`.
 
@@ -56,8 +56,9 @@ Returns:
 ```json
 {
   "consensus": "...",
-  "confidence": 0.91,
+  "confidence_score": 0.91,
   "agreement_score": 0.87,
+  "reasoning_summary": "...",
   "agent_outputs": [],
   "disagreements": []
 }
