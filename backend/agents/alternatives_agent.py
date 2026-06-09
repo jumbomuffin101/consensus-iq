@@ -2,7 +2,7 @@ from agents.prompting import state_context_payload
 from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import AgentOutput, ReasoningState
-from reasoning.domain import bounded_score, build_domain_profile
+from reasoning.domain import bounded_score, build_domain_profile, prompt_injection_risk
 
 
 class AlternativesAnalystNode:
@@ -40,13 +40,24 @@ class AlternativesAnalystNode:
 
     def _fallback_output(self, state: ReasoningState) -> AgentOutput:
         profile = build_domain_profile(state)
-        refs = [
-            item.citation_id
-            for item in state.retrieved_context
-            if "pattern" in item.title.lower()
-        ]
-        domain_content = {
-            "clinical": {
+        question = state.question.lower()
+        refs = [item.citation_id for item in state.retrieved_context]
+        if profile.domain == "clinical" and any(
+            term in question for term in ["stroke", "thrombolytic", "aphasia", "weakness"]
+        ):
+            domain_content = {
+                "recommendation": "Compare thrombolysis eligibility with thrombectomy evaluation, supportive care, and transfer to a stroke-capable center.",
+                "conclusion": (
+                    "The viable alternatives are not treatment versus no treatment in the abstract; they depend on imaging, vessel-occlusion suspicion, contraindications, and time-to-treatment logistics."
+                ),
+                "rationale": [
+                    f"{refs[0] if refs else 'S1'} supports urgent evaluation rather than delay.",
+                    "If large-vessel occlusion is suspected, transfer or thrombectomy evaluation can run alongside thrombolysis screening.",
+                ],
+                "missing": ["Stroke severity, vascular imaging availability, thrombectomy eligibility, and transfer time."],
+            }
+        elif profile.domain == "clinical":
+            domain_content = {
                 "recommendation": "Consider CT first if MRI is delayed, while preserving the principle of imaging before LP when elevated intracranial risk is plausible.",
                 "conclusion": (
                     "The main alternative is not LP-first; it is selecting the fastest appropriate imaging path based on urgency, availability, and contraindications."
@@ -56,41 +67,70 @@ class AlternativesAnalystNode:
                     "If meningitis is strongly suspected and imaging is delayed, empiric treatment timing may become a parallel concern.",
                 ],
                 "missing": ["MRI availability, CT access, infection signs, and urgency of antimicrobial therapy."],
-            },
-            "enterprise": {
-                "recommendation": "Use private enterprise AI, redaction workflows, or no-AI handling instead of public AI tools for confidential documents.",
+            }
+        elif profile.domain == "cybersecurity":
+            domain_content = {
+                "recommendation": "Compare device isolation, remote wipe, legal hold, employee interview, customer notification, and credential rotation as separate tracks.",
                 "conclusion": (
-                    "The strongest alternative is a tiered policy: approved enterprise models for low-risk work, human-only handling for restricted client material."
+                    "A single next step is too narrow: containment and evidence preservation should start immediately, while notification decisions wait for scope unless law or contract imposes a clock."
                 ),
                 "rationale": [
-                    f"{refs[0] if refs else 'S2'} supports phased implementation and owner assignment.",
-                    "A redaction or synthetic-data workflow can preserve productivity without exposing raw client documents.",
+                    f"{refs[1] if len(refs) > 1 else 'S2'} supports forensic handling as its own workstream.",
+                    f"{refs[2] if len(refs) > 2 else 'S3'} supports tying disclosure to jurisdiction and exposure evidence.",
                 ],
-                "missing": ["Data classification scheme and approved secure AI tooling options."],
-            },
-            "cybersecurity": {
-                "recommendation": "Compare containment-first, monitor-only, and shutdown options against blast-radius evidence.",
+                "missing": ["Whether remote wipe would destroy needed evidence and whether notification deadlines have already started."],
+            }
+        elif profile.domain == "research":
+            domain_content = {
+                "recommendation": "Compare single-model grading with human grading, LLM ensemble scoring, rubric-constrained scoring, and audit sampling.",
                 "conclusion": (
-                    "A monitor-only path may preserve operations but is weak if exposure is active; shutdown may be justified for regulated or high-impact systems."
+                    "The strongest alternative is a hybrid design: use LLMs for draft scoring or feedback, then route low-confidence, borderline, or appealed essays to humans."
                 ),
                 "rationale": [
-                    f"{refs[0] if refs else 'S2'} supports comparing options through checkpointed evidence.",
-                    "Containment choices should vary by data sensitivity and observed attacker activity.",
-                ],
-                "missing": ["Current indicators of compromise and business-critical system dependencies."],
-            },
-            "research": {
-                "recommendation": "Compare single LLM grading with ensemble grading, human adjudication, and rubric-constrained scoring.",
-                "conclusion": (
-                    "The practical alternative is hybrid evaluation: use LLMs for scalable preliminary scoring, then audit uncertain or high-impact cases."
-                ),
-                "rationale": [
-                    f"{refs[0] if refs else 'S2'} supports staged adoption with measurable checkpoints.",
-                    "Multiple graders or human adjudication can reveal model-specific bias and prompt sensitivity.",
+                    f"{refs[2] if len(refs) > 2 else 'S3'} supports LLM assistance with calibration and human adjudication.",
+                    "Multiple graders or audit sampling can reveal model-specific bias and prompt sensitivity.",
                 ],
                 "missing": ["Cost and latency tradeoff for ensemble or human-reviewed grading."],
-            },
-            "custom": {
+            }
+        elif profile.domain == "finance":
+            domain_content = {
+                "recommendation": "Compare a diversified index fund, a small satellite AI-stock position, a cash reserve, and debt or tuition funding before buying.",
+                "conclusion": (
+                    "The best alternative preserves upside exposure without making one speculative company determine the student's financial resilience."
+                ),
+                "rationale": [
+                    f"{refs[0] if refs else 'S1'} supports avoiding uncompensated single-company risk.",
+                    f"{refs[1] if len(refs) > 1 else 'S2'} supports sizing investment around liquidity needs.",
+                ],
+                "missing": ["Target allocation, expected expenses, and whether the money is needed within one to three years."],
+            }
+        elif profile.domain == "enterprise":
+            if "replace software engineers" in question or "every company" in question:
+                domain_content = {
+                    "recommendation": "Compare AI-assisted engineering, bounded autonomous agents, vendor tools, and human-led delivery instead of total replacement.",
+                    "conclusion": (
+                        "The practical alternative is augmentation with measured quality gates: let agents handle constrained tasks while engineers retain architecture, review, accountability, and incident response."
+                    ),
+                    "rationale": [
+                        f"{refs[0] if refs else 'S1'} supports monitored AI use cases with owners.",
+                        f"{refs[1] if len(refs) > 1 else 'S2'} supports evaluating continuity and quality before workforce replacement.",
+                    ],
+                    "missing": ["Which engineering tasks are repetitive, safety-critical, regulated, or customer-facing."],
+                }
+            else:
+                domain_content = {
+                    "recommendation": "Use private enterprise AI, redaction workflows, or no-AI handling instead of public AI tools for confidential documents.",
+                    "conclusion": (
+                        "The strongest alternative is a tiered policy: approved enterprise models for low-risk work, human-only handling for restricted client material."
+                    ),
+                    "rationale": [
+                        f"{refs[0] if refs else 'S1'} supports controlled governance and owner assignment.",
+                        "A redaction or synthetic-data workflow can preserve productivity without exposing raw client documents.",
+                    ],
+                    "missing": ["Data classification scheme and approved secure AI tooling options."],
+                }
+        else:
+            domain_content = {
                 "recommendation": "Compare at least one conservative, one reversible, and one high-commitment option before deciding.",
                 "conclusion": (
                     "A custom question should not inherit a preset recommendation; the alternatives should be derived from the user's decision constraints."
@@ -100,10 +140,13 @@ class AlternativesAnalystNode:
                     "Explicit option comparison prevents premature convergence.",
                 ],
                 "missing": ["Available options, constraints, and stakeholder tolerance for risk."],
-            },
-        }[profile.domain]
+            }
         confidence = bounded_score(
-            0.38 + (profile.evidence_quality * 0.32) - (profile.ambiguity * 0.1) + (0.05 if profile.domain != "custom" else 0)
+            0.36
+            + (profile.evidence_quality * 0.32)
+            - (profile.ambiguity * 0.1)
+            + (0.06 if profile.domain != "custom" else 0)
+            - (prompt_injection_risk(state.question) * 0.75)
         )
         return AgentOutput(
             agent="Alternative Solutions Agent",

@@ -4,7 +4,7 @@
 
 - **Hackathon:** Microsoft Agents League
 - **Challenge track:** Reasoning Agents
-- **Microsoft IQ layer:** Microsoft Foundry IQ-style citation retrieval
+- **Microsoft IQ layer:** Microsoft Foundry IQ provider interface with citation retrieval
 - **License:** MIT
 
 ## Safety Disclaimer
@@ -17,7 +17,7 @@ High-stakes decisions often depend on incomplete evidence, competing interpretat
 
 ## Solution Overview
 
-ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Foundry IQ integrations both have mock fallback providers.
+ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, detects the decision scenario, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with dynamic confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Foundry IQ integrations both have mock fallback providers.
 
 ## Architecture
 
@@ -45,11 +45,13 @@ User Question
 ## Key Features
 
 - Multi-agent reasoning with planner, risk, evidence, alternatives, and consensus judge roles.
-- Microsoft Foundry IQ-style retrieval abstraction with citation IDs and source snippets.
+- Microsoft Foundry IQ HTTP provider boundary with configurable endpoint, API key, index name, API version, request payload builder, and response parser.
+- Domain-specific mock Foundry IQ fallback sources for clinical, cybersecurity, research, enterprise, finance, and custom prompts.
 - Azure OpenAI-ready LLM provider with retries, timeouts, and mock fallback.
 - Parallel specialist agent execution.
 - Structured disagreement detection.
-- Confidence and agreement scoring.
+- Prompt-specific confidence and agreement scoring.
+- Scenario label returned by the API and displayed in the app.
 - Stable `POST /analyze` API contract.
 - Local demo reliability without secrets or external services.
 
@@ -92,7 +94,7 @@ AZURE_OPENAI_DEPLOYMENT=your-deployment-name
 AZURE_OPENAI_API_VERSION=2024-10-21
 ```
 
-Optional Foundry IQ retrieval:
+Optional Microsoft Foundry IQ retrieval:
 
 ```bash
 FOUNDRY_IQ_ENDPOINT=https://your-foundry-iq-endpoint
@@ -101,7 +103,9 @@ FOUNDRY_IQ_INDEX_NAME=your-index-name
 FOUNDRY_IQ_API_VERSION=2024-05-01-preview
 ```
 
-If Azure OpenAI or Foundry IQ is unavailable, ConsensusIQ falls back to mock providers and still returns a complete report.
+The Microsoft IQ integration layer lives in `backend/retrieval/foundry.py`. That provider builds the HTTP request, sends the configured API key, targets the configured index, parses Foundry IQ search results into citation-ready `RetrievedContext` objects, and keeps provider-specific response mapping out of the agents.
+
+If Azure OpenAI or Foundry IQ is unavailable, ConsensusIQ falls back to mock providers and still returns a complete report. The mock Foundry IQ provider returns clearly marked, domain-specific sources so judges can evaluate the grounding flow even without live credentials.
 
 ### Frontend
 
@@ -166,6 +170,7 @@ Returns:
 ```json
 {
   "consensus": "...",
+  "scenario_label": "Enterprise",
   "confidence_score": 0.91,
   "agreement_score": 0.87,
   "reasoning_summary": "...",

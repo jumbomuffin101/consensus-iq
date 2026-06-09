@@ -2,7 +2,7 @@ from agents.prompting import state_context_payload
 from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import AgentOutput, ReasoningState
-from reasoning.domain import bounded_score, build_domain_profile
+from reasoning.domain import bounded_score, build_domain_profile, prompt_injection_risk
 
 
 class RiskAnalystNode:
@@ -40,13 +40,31 @@ class RiskAnalystNode:
 
     def _fallback_output(self, state: ReasoningState) -> AgentOutput:
         profile = build_domain_profile(state)
+        question = state.question.lower()
         refs = [
             item.citation_id
             for item in state.retrieved_context
             if item.relevance_score >= 0.8
         ]
-        domain_content = {
-            "clinical": {
+        if profile.domain == "clinical" and any(
+            term in question for term in ["stroke", "thrombolytic", "aphasia", "weakness"]
+        ):
+            domain_content = {
+                "recommendation": "Do not give thrombolytic therapy until hemorrhage is excluded and contraindications are checked.",
+                "conclusion": (
+                    "The time window supports urgent thrombolysis evaluation, but the safety risk is catastrophic bleeding if imaging, blood pressure, anticoagulant status, or recent bleeding history is missed."
+                ),
+                "rationale": [
+                    f"{refs[0] if refs else 'S1'} frames acute focal deficits as a time-critical stroke workflow.",
+                    f"{refs[1] if len(refs) > 1 else 'S2'} identifies contraindications that must be cleared before treatment.",
+                ],
+                "missing": [
+                    "Non-contrast head CT or equivalent imaging result.",
+                    "Anticoagulant use, platelet count, blood pressure, glucose, recent surgery, bleeding history, and exact last-known-well.",
+                ],
+            }
+        elif profile.domain == "clinical":
+            domain_content = {
                 "recommendation": "Do not proceed to lumbar puncture until imaging-related safety risks are addressed.",
                 "conclusion": (
                     "The major risk is missing an intracranial mass, hemorrhage, or other structural cause of a new focal seizure before LP. "
@@ -60,50 +78,85 @@ class RiskAnalystNode:
                     "Neurologic exam, papilledema status, anticoagulation status, fever, and immunocompromise.",
                     "Local emergency or neurology guideline for imaging before LP.",
                 ],
-            },
-            "enterprise": {
-                "recommendation": "Restrict public AI use for confidential client documents until governance and controls exist.",
+            }
+        elif profile.domain == "cybersecurity":
+            domain_content = {
+                "recommendation": "Immediately contain the laptop and accounts, preserve evidence, and escalate incident response before taking disciplinary or disclosure decisions.",
                 "conclusion": (
-                    "The principal risks are client confidentiality loss, contractual breach, regulatory exposure, and unclear accountability for model-retained data."
+                    "The highest-risk failure mode is losing forensic integrity or delaying containment while customer data remains exposed on an unmanaged personal device."
                 ),
                 "rationale": [
-                    f"{refs[0] if refs else 'S1'} supports treating the question as a governance and confidentiality decision.",
-                    f"{refs[-1] if refs else 'S3'} points to stakeholder and rollback risks if policy is unclear.",
+                    f"{refs[0] if refs else 'S1'} treats customer data copied to a personal device as a security incident.",
+                    f"{refs[1] if len(refs) > 1 else 'S2'} supports device isolation, account review, and chain-of-custody controls.",
                 ],
                 "missing": [
-                    "Approved vendor list, contractual data-processing terms, and client consent requirements.",
-                    "Incident response owner for accidental upload or data leakage.",
+                    "Whether the laptop is encrypted, managed, online, or already wiped.",
+                    "Exact data fields copied, customer count, downstream sharing, and applicable breach notification thresholds.",
                 ],
-            },
-            "cybersecurity": {
-                "recommendation": "Prioritize containment and investigation before expanding access or normal operations.",
+            }
+        elif profile.domain == "research":
+            domain_content = {
+                "recommendation": "Do not let a single LLM be the sole grader for all essays until reliability, bias, and appeal processes are proven.",
                 "conclusion": (
-                    "The main failure mode is acting before scope, exposure, and compliance obligations are understood."
+                    "The key risk is invalid assessment: one model can apply a rubric inconsistently, penalize particular writing styles, and leave students without defensible recourse."
                 ),
                 "rationale": [
-                    f"{refs[0] if refs else 'S1'} supports containment-first decision criteria.",
-                    f"{refs[-1] if refs else 'S3'} indicates risk of unclear ownership and rollback criteria.",
+                    f"{refs[0] if refs else 'S1'} flags construct-irrelevant bias in automated grading.",
+                    f"{refs[1] if len(refs) > 1 else 'S2'} identifies prompt sensitivity and rubric drift as reliability risks.",
                 ],
                 "missing": [
-                    "Known blast radius, affected systems, and evidence preservation status.",
-                    "Regulatory reporting thresholds and customer notification requirements.",
+                    "Inter-rater reliability versus trained human graders.",
+                    "Bias analysis by course, language background, disability accommodation, and essay genre.",
                 ],
-            },
-            "research": {
-                "recommendation": "Do not rely on a single LLM grader without calibration, human review, and bias checks.",
+            }
+        elif profile.domain == "finance":
+            domain_content = {
+                "recommendation": "Do not invest all savings into one AI stock; preserve liquidity and avoid single-company concentration.",
                 "conclusion": (
-                    "The key risk is measurement error: a single model grader can encode rubric drift, prompt sensitivity, and systematic bias."
+                    "The dominant risk is concentration: a 19-year-old may have long time horizon, but tuition needs, emergency cash, and a single volatile equity can create avoidable permanent-loss exposure."
                 ),
                 "rationale": [
-                    f"{refs[0] if refs else 'S1'} grounds the question in evaluation criteria and quality controls.",
-                    f"{refs[-1] if refs else 'S3'} highlights evidence limitations and review checkpoints.",
+                    f"{refs[0] if refs else 'S1'} identifies single-stock concentration as a diversifiable risk.",
+                    f"{refs[1] if len(refs) > 1 else 'S2'} shows suitability depends on liquidity, debt, and time horizon, not age alone.",
                 ],
                 "missing": [
-                    "Inter-rater reliability against expert graders.",
-                    "Bias analysis across student groups and concept-map styles.",
+                    "Emergency fund, tuition obligations, debt, income stability, and total savings amount.",
+                    "Risk tolerance and whether the student can afford a large drawdown.",
                 ],
-            },
-            "custom": {
+            }
+        elif profile.domain == "enterprise":
+            if "replace software engineers" in question or "every company" in question:
+                domain_content = {
+                    "recommendation": "Reject a universal replacement decision; require role-level evidence, accountability, and human review before any workforce automation.",
+                    "conclusion": (
+                        "The prompt asks for certainty on a broad workforce claim, but the risk profile varies by system criticality, code ownership, compliance, quality assurance, and organizational capability."
+                    ),
+                    "rationale": [
+                        f"{refs[0] if refs else 'S1'} supports governance and accountable owners for AI adoption.",
+                        f"{refs[1] if len(refs) > 1 else 'S2'} distinguishes augmentation from role replacement and flags continuity risks.",
+                    ],
+                    "missing": [
+                        "Engineering quality metrics, incident ownership, regulated-system exposure, and security review capacity.",
+                        "Evidence that AI agents can maintain, test, and be accountable for the specific software portfolio.",
+                    ],
+                }
+            else:
+                domain_content = {
+                    "recommendation": "Restrict public AI use for confidential client documents until governance and controls exist.",
+                    "conclusion": (
+                        "The principal risks are client confidentiality loss, contractual breach, regulatory exposure, and unclear accountability for model-retained data."
+                    ),
+                    "rationale": [
+                        f"{refs[0] if refs else 'S1'} supports treating the question as a governance and confidentiality decision.",
+                        f"{refs[-1] if refs else 'S3'} points to stakeholder and rollback risks if policy is unclear.",
+                    ],
+                    "missing": [
+                        "Approved vendor list, contractual data-processing terms, and client consent requirements.",
+                        "Incident response owner for accidental upload or data leakage.",
+                    ],
+                }
+        else:
+            domain_content = {
                 "recommendation": "Treat the decision as conditional until risk owners and failure criteria are explicit.",
                 "conclusion": (
                     "The main risk is overcommitting before the decision criteria, downside exposure, and reversal plan are clear."
@@ -116,10 +169,13 @@ class RiskAnalystNode:
                     "Decision owner, success threshold, and rollback criteria.",
                     "Quantified downside if the recommendation is wrong.",
                 ],
-            },
-        }[profile.domain]
+            }
         confidence = bounded_score(
-            0.52 + (profile.evidence_quality * 0.32) - (profile.ambiguity * 0.18)
+            0.5
+            + (profile.evidence_quality * 0.31)
+            + (profile.risk_level * 0.04)
+            - (profile.ambiguity * 0.16)
+            - prompt_injection_risk(state.question)
         )
         return AgentOutput(
             agent="Risk Analyst Agent",

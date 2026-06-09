@@ -62,6 +62,7 @@ class ExecutionMetadata(BaseModel):
 
 class ReasoningState(BaseModel):
     question: str
+    scenario_label: str = "Custom"
     retrieved_context: list[RetrievedContext] = Field(default_factory=list)
     reasoning_tasks: list[ReasoningTask] = Field(default_factory=list)
     agent_outputs: list[AgentOutput] = Field(default_factory=list)

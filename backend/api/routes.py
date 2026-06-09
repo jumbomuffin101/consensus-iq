@@ -18,6 +18,7 @@ class AnalyzeRequest(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     consensus: str
+    scenario_label: str = "Custom"
     confidence_score: float = Field(..., ge=0, le=1)
     agreement_score: float = Field(..., ge=0, le=1)
     reasoning_summary: str
@@ -32,6 +33,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     state = analyze_question(request.question)
     return AnalyzeResponse(
         consensus=state.consensus,
+        scenario_label=state.scenario_label,
         confidence_score=state.confidence_score,
         agreement_score=state.agreement_score,
         reasoning_summary=state.reasoning_summary,

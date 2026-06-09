@@ -12,6 +12,7 @@ The reasoning pipeline passes a typed Pydantic `ReasoningState` through every
 node. The state includes:
 
 - `question`
+- `scenario_label`
 - `retrieved_context`
 - `reasoning_tasks`
 - `agent_outputs`
@@ -61,8 +62,9 @@ disagreement report.
 Retrieval providers live in `backend/retrieval`.
 
 - `retrieval/base.py`: provider contract, resilient fallback wrapper, and graph node.
-- `retrieval/foundry.py`: Foundry IQ HTTP provider and response normalization.
-- `retrieval/mock.py`: local citation-ready sources for reliable demos.
+- `retrieval/foundry.py`: Microsoft Foundry IQ HTTP provider, request payload
+  builder, API key/index configuration, and response normalization.
+- `retrieval/mock.py`: domain-specific citation-ready sources for reliable demos.
 - `retrieval/factory.py`: reads `FOUNDRY_IQ_*` environment variables and chooses
   the provider.
 
@@ -79,7 +81,9 @@ Required Foundry IQ variables:
 - `FOUNDRY_IQ_API_VERSION`
 
 If any value is missing or the provider fails, `MockRetrievalProvider` returns
-clearly marked mock sources so `/analyze` remains reliable.
+clearly marked mock sources so `/analyze` remains reliable. The mock provider
+classifies prompts as clinical, cybersecurity, research, enterprise, finance,
+or custom so local demos still exercise citation-grounded reasoning.
 
 ## Node Responsibilities
 
@@ -102,7 +106,9 @@ clearly marked mock sources so `/analyze` remains reliable.
 - missing evidence
 
 The detector produces structured `Disagreement` objects and calculates an
-agreement score used by the consensus judge.
+agreement score used by the consensus judge. The consensus judge combines
+agreement, source relevance, domain risk, question ambiguity, prompt-injection
+signals, and missing evidence into the final confidence score.
 
 ## Extension Points
 

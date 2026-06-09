@@ -180,6 +180,12 @@ export function ConsensusWorkbench() {
             <CardContent className="space-y-5">
               {result ? (
                 <>
+                  <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+                    <span className="text-sm text-muted-foreground">Scenario</span>
+                    <Badge tone={result.scenario_label === "Custom" ? "muted" : "success"}>
+                      {result.scenario_label}
+                    </Badge>
+                  </div>
                   <p className="text-sm leading-6 text-foreground">{result.consensus}</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />

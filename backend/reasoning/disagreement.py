@@ -30,20 +30,23 @@ class DisagreementDetector:
             for right in outputs[index + 1 :]
         ]
         semantic_alignment = sum(similarities) / len(similarities) if similarities else 0.5
+        direction_alignment = self._direction_alignment(outputs)
         confidence_values = [output.confidence_score for output in outputs]
         confidence_spread = max(confidence_values) - min(confidence_values)
         evidence_coverage = sum(1 for output in outputs if output.evidence_refs) / len(outputs)
         severity_penalty = sum(
-            {"low": 0.05, "medium": 0.12, "high": 0.22}[item.severity]
+            {"low": 0.04, "medium": 0.08, "high": 0.18}[item.severity]
             for item in disagreements
         )
         raw_score = (
-            0.35
-            + (semantic_alignment * 0.34)
+            0.34
+            + (semantic_alignment * 0.24)
+            + (direction_alignment * 0.24)
             + (evidence_coverage * 0.18)
             + self._domain_alignment_bonus(outputs)
             - (confidence_spread * 0.22)
             - severity_penalty
+            - self._major_concern_penalty(outputs)
         )
         return round(max(0.05, min(0.98, raw_score)), 2)
 
@@ -136,11 +139,17 @@ class DisagreementDetector:
 
     def _recommendation_group(self, recommendation: str) -> str:
         normalized = recommendation.lower()
+        if "diversification" in normalized or "diversified" in normalized:
+            return "diversify"
+        if "contain" in normalized or "preserve evidence" in normalized:
+            return "contain"
+        if "not as the sole" in normalized or "not let a single" in normalized:
+            return "hybrid"
         if "do not" in normalized or "avoid" in normalized or "restrict" in normalized:
             return "avoid"
         if "pilot" in normalized or "limited" in normalized or "controlled" in normalized:
             return "pilot"
-        if "proceed" in normalized or "support" in normalized or "favor" in normalized:
+        if "proceed" in normalized or "support" in normalized or "favor" in normalized or "evaluate" in normalized:
             return "proceed"
         if "caution" in normalized or "gate" in normalized:
             return "caution"
@@ -150,13 +159,35 @@ class DisagreementDetector:
 
     def _recommendations_are_complementary(self, outputs: list[AgentOutput]) -> bool:
         text = " ".join(output.recommendation.lower() for output in outputs)
-        if "do not" in text and ("support" in text or "favor" in text):
+        complementary_caution = any(
+            term in text
+            for term in [
+                "only after",
+                "until",
+                "diversification",
+                "diversified",
+                "not as the sole",
+                "not let a single",
+            ]
+        )
+        if "do not" in text and ("support" in text or "favor" in text) and not complementary_caution:
             return False
         if "restrict" in text and "unrestricted" in text:
             return False
         return any(
             term in text
-            for term in ["controlled", "calibration", "imaging", "approved", "hybrid"]
+            for term in [
+                "controlled",
+                "calibration",
+                "imaging",
+                "approved",
+                "hybrid",
+                "contain",
+                "forensic",
+                "scope",
+                "diversified",
+                "contraindications",
+            ]
         )
 
     def _token_similarity(self, left: str, right: str) -> float:
@@ -185,6 +216,8 @@ class DisagreementDetector:
             f"{output.recommendation} {output.conclusion}".lower()
             for output in outputs
         )
+        if all(term in text for term in ["thrombolysis", "contraindication"]):
+            return 0.05
         if all(term in text for term in ["mri", "lp"]) or "lumbar puncture" in text:
             return -0.02
         if all(term in text for term in ["public ai", "confidential"]):
@@ -193,4 +226,46 @@ class DisagreementDetector:
             return 0.03
         if "custom question" in text or "decision criteria" in text:
             return -0.03
+        if all(term in text for term in ["contain", "evidence"]):
+            return 0.05
+        if all(term in text for term in ["single", "grader"]):
+            return -0.02
+        if all(term in text for term in ["all savings", "one ai stock"]):
+            return 0.02
+        if "replace engineers" in text or "universal replacement" in text:
+            return -0.06
         return 0.0
+
+    def _direction_alignment(self, outputs: list[AgentOutput]) -> float:
+        if self._recommendations_are_complementary(outputs):
+            text = " ".join(output.recommendation.lower() for output in outputs)
+            if "single llm" in text or "single-model" in text:
+                return 0.52
+            if "all savings" in text or "one ai stock" in text:
+                return 0.62
+            return 0.72
+
+        groups = [self._recommendation_group(output.recommendation) for output in outputs]
+        if not groups:
+            return 0.0
+        most_common = max(groups.count(group) for group in set(groups))
+        base = most_common / len(groups)
+        if {"avoid", "proceed"}.issubset(set(groups)):
+            return max(0.15, base - 0.22)
+        if "compare" in groups and ("avoid" in groups or "pilot" in groups):
+            return max(0.25, base - 0.08)
+        return base
+
+    def _major_concern_penalty(self, outputs: list[AgentOutput]) -> float:
+        text = " ".join(
+            f"{output.recommendation} {output.conclusion}".lower()
+            for output in outputs
+        )
+        penalty = 0.0
+        if "catastrophic" in text or "permanent capital loss" in text:
+            penalty += 0.04
+        if "single llm" in text and "sole" in text:
+            penalty += 0.03
+        if "100% confidence" in text or "100% certain" in text:
+            penalty += 0.05
+        return penalty

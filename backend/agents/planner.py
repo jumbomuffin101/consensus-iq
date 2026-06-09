@@ -1,6 +1,7 @@
 from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import ReasoningState, ReasoningTask
+from reasoning.domain import classify_domain
 
 
 class PlannerNode:
@@ -36,6 +37,38 @@ class PlannerNode:
 
     def _fallback_plan(self, question: str) -> list[ReasoningTask]:
         normalized = question.lower()
+        domain = classify_domain(question)
+
+        if domain == "clinical" and any(
+            term in normalized for term in ["stroke", "thrombolytic", "aphasia", "weakness"]
+        ):
+            return [
+                ReasoningTask(
+                    id="task-1",
+                    description="Confirm stroke time window, last-known-well, and immediate eligibility factors.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-2",
+                    description="Identify thrombolysis contraindications and patient-specific bleeding risks.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-3",
+                    description="Review evidence for urgent imaging and treatment sequencing in acute focal deficits.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-4",
+                    description="Compare thrombolysis, thrombectomy evaluation, supportive care, and transfer options.",
+                    owner="Alternative Solutions Agent",
+                    priority="high",
+                ),
+            ]
+
         if all(term in normalized for term in ["seizure", "mri", "lp"]):
             return [
                 ReasoningTask(
@@ -64,11 +97,123 @@ class PlannerNode:
                 ),
             ]
 
+        if domain == "cybersecurity":
+            return [
+                ReasoningTask(
+                    id="task-1",
+                    description="Contain the personal laptop and preserve forensic evidence.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-2",
+                    description="Determine what customer data was copied, accessed, or transmitted.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-3",
+                    description="Evaluate legal, contractual, customer, and regulator notification obligations.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-4",
+                    description="Compare containment-only, disciplinary, remediation, and disclosure paths.",
+                    owner="Alternative Solutions Agent",
+                    priority="medium",
+                ),
+            ]
+
+        if domain == "research":
+            return [
+                ReasoningTask(
+                    id="task-1",
+                    description="Define what grading validity and reliability must mean for this assessment.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-2",
+                    description="Identify bias, rubric drift, prompt sensitivity, and appeal risks.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-3",
+                    description="Review evidence required before a single LLM can grade high-stakes work.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-4",
+                    description="Compare human grading, hybrid grading, ensemble LLMs, and audit sampling.",
+                    owner="Alternative Solutions Agent",
+                    priority="medium",
+                ),
+            ]
+
+        if domain == "finance":
+            return [
+                ReasoningTask(
+                    id="task-1",
+                    description="Assess liquidity needs, emergency savings, debt, time horizon, and risk tolerance.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-2",
+                    description="Evaluate single-stock concentration, volatility, and permanent-loss risk.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-3",
+                    description="Review evidence for diversification and suitability for a college student.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-4",
+                    description="Compare diversified funds, staged investing, cash reserve, and education-first options.",
+                    owner="Alternative Solutions Agent",
+                    priority="medium",
+                ),
+            ]
+
+        if domain == "enterprise":
+            return [
+                ReasoningTask(
+                    id="task-1",
+                    description="Clarify business objective, stakeholders, accountability, and operational impact.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-2",
+                    description="Identify governance, compliance, workforce, quality, and confidentiality risks.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-3",
+                    description="Review evidence for controlled adoption versus broad replacement or unrestricted use.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-4",
+                    description="Compare augmentation, limited pilots, approved-tool policies, and no-go boundaries.",
+                    owner="Alternative Solutions Agent",
+                    priority="medium",
+                ),
+            ]
+
         return [
             ReasoningTask(
                 id="task-1",
                 description="Identify the decision objective and diagnostic priorities.",
-                owner="Planner Agent",
+                owner="Evidence Analyst Agent",
                 priority="high",
             ),
             ReasoningTask(

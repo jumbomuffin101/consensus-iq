@@ -3,7 +3,12 @@ from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import ConsensusJudgment, ReasoningState
 from reasoning.disagreement import DisagreementDetector
-from reasoning.domain import bounded_score, build_domain_profile
+from reasoning.domain import (
+    bounded_score,
+    build_domain_profile,
+    missing_information_load,
+    prompt_injection_risk,
+)
 
 
 class ConsensusJudgeNode:
@@ -25,6 +30,8 @@ class ConsensusJudgeNode:
         disagreements = self.detector.detect(state.agent_outputs)
         agreement_score = self.detector.calculate_agreement_score(state.agent_outputs)
         profile = build_domain_profile(state)
+        missing_penalty = missing_information_load(state)
+        injection_penalty = prompt_injection_risk(state.question)
         avg_confidence = (
             sum(output.confidence_score for output in state.agent_outputs)
             / len(state.agent_outputs)
@@ -32,11 +39,14 @@ class ConsensusJudgeNode:
             else 0.0
         )
         confidence_score = bounded_score(
-            (avg_confidence * 0.42)
-            + (agreement_score * 0.28)
-            + (profile.evidence_quality * 0.22)
-            + (profile.source_certainty * 0.12)
-            - (profile.ambiguity * 0.2)
+            (avg_confidence * 0.38)
+            + (agreement_score * 0.3)
+            + (profile.evidence_quality * 0.24)
+            + (profile.source_certainty * 0.1)
+            - (profile.ambiguity * 0.18)
+            - (profile.risk_level * 0.08)
+            - missing_penalty
+            - injection_penalty
         )
 
         state_with_disagreements = state.copy(update={"disagreements": disagreements})
@@ -75,9 +85,10 @@ class ConsensusJudgeNode:
         return state.copy(
             update={
                 "disagreements": disagreements,
+                "scenario_label": profile.scenario_label,
                 "consensus": judgment.consensus,
-                "confidence_score": judgment.confidence_score,
-                "agreement_score": judgment.agreement_score,
+                "confidence_score": confidence_score,
+                "agreement_score": agreement_score,
                 "reasoning_summary": judgment.reasoning_summary,
             }
         )
@@ -93,6 +104,7 @@ class ConsensusJudgeNode:
             "cybersecurity": "Cybersecurity consensus",
             "research": "Research evaluation consensus",
             "enterprise": "Enterprise risk consensus",
+            "finance": "Finance consensus",
             "custom": "Custom decision consensus",
         }[domain]
 
@@ -104,20 +116,39 @@ class ConsensusJudgeNode:
         if alternatives:
             clauses.append(f"Alternative view: {alternatives.recommendation}")
 
-        if domain == "clinical":
+        question = state.question.lower()
+        if domain == "clinical" and any(
+            term in question for term in ["stroke", "thrombolytic", "aphasia", "weakness"]
+        ):
+            recommendation = (
+                "activate an urgent stroke pathway and consider thrombolysis only after imaging excludes hemorrhage and contraindications are checked"
+            )
+        elif domain == "clinical":
             recommendation = "prioritize patient safety and diagnostic sequencing before invasive steps"
         elif domain == "enterprise":
-            recommendation = "use governance, approved tooling, and confidentiality controls before allowing broad AI use"
+            if "replace software engineers" in question or "every company" in question:
+                recommendation = (
+                    "reject a universal engineer-replacement claim and use AI agents only where task-level evidence, human accountability, and quality gates support them"
+                )
+            else:
+                recommendation = "use governance, approved tooling, and confidentiality controls before allowing broad AI use"
         elif domain == "cybersecurity":
-            recommendation = "base action on containment, investigation, compliance duties, and verified exposure"
+            recommendation = "contain the personal device, preserve evidence, assess exposure, and then decide notification and remediation duties"
         elif domain == "research":
-            recommendation = "avoid single-grader dependence until validity, bias, and reliability are demonstrated"
+            recommendation = "avoid single-LLM grading dependence until validity, bias, reliability, and appeal checks are demonstrated"
+        elif domain == "finance":
+            recommendation = "avoid putting all savings into one AI stock and prefer diversified, liquidity-aware investing"
         else:
             recommendation = "make the decision conditional on the strongest cited evidence and unresolved risks"
+
+        uncertainty_note = ""
+        if prompt_injection_risk(state.question):
+            uncertainty_note = " The request for certainty is treated as a reliability risk, so the answer preserves uncertainty rather than claiming 100% confidence."
 
         return (
             f"{domain_opening}: {recommendation}. "
             + " ".join(clauses)
+            + uncertainty_note
             + " The final recommendation is grounded in the cited retrieved sources and preserves the main disagreement points."
         )
 
@@ -134,7 +165,7 @@ class ConsensusJudgeNode:
             f"{output.agent}: {output.conclusion}" for output in state.agent_outputs
         )
         return (
-            f"Domain detected: {domain}. Planner tasks: {task_summary}. "
+            f"Scenario detected: {domain}. Planner tasks: {task_summary}. "
             f"Independent findings: {agent_summary} "
             f"Detected disagreement areas: {disagreement_summary}."
         )
