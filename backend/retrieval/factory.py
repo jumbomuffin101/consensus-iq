@@ -8,7 +8,7 @@ from retrieval.mock import MockRetrievalProvider
 
 
 def create_retrieval_provider() -> BaseRetrievalProvider:
-    """Create the configured Foundry IQ provider with mock fallback."""
+    """Create the configured Foundry IQ provider with demo corpus fallback."""
 
     load_dotenv()
 

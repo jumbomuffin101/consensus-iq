@@ -26,7 +26,7 @@ Optional Foundry IQ:
 - `FOUNDRY_IQ_INDEX_NAME`
 - `FOUNDRY_IQ_API_VERSION`
 
-If Azure OpenAI or Foundry IQ variables are missing or unavailable, ConsensusIQ uses mock fallback providers so demos continue to run.
+If Azure OpenAI or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is a clearly labeled Foundry IQ Retrieval Layer demo corpus.
 
 ### Frontend
 
@@ -103,7 +103,7 @@ Recommended settings:
 - Configure `FRONTEND_ORIGIN` to the deployed Vercel or Azure frontend URL.
 - Store `AZURE_OPENAI_API_KEY` and `FOUNDRY_IQ_API_KEY` as secrets.
 - Use `/health` as the health probe path.
-- Keep mock fallback enabled for demo reliability.
+- Keep local fallback providers enabled for demo reliability.
 
 ## Observability
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -45,6 +45,14 @@ const flowSteps = [
   "Consensus Judge",
 ];
 
+const progressSteps = [
+  "Retrieving grounded context",
+  "Planning reasoning tasks",
+  "Running specialist agents",
+  "Detecting disagreements",
+  "Synthesizing consensus",
+];
+
 function asPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -57,22 +65,111 @@ function promptDomainLabel(question: string) {
   return "Custom";
 }
 
+function getConfidenceFactors(result: AnalyzeResponse, question: string) {
+  const averageRelevance =
+    result.sources.reduce((total, source) => total + source.relevance_score, 0) /
+    Math.max(result.sources.length, 1);
+  const missingEvidenceCount = result.agent_outputs.reduce(
+    (total, agent) => total + agent.missing_evidence.length,
+    0,
+  );
+  const hasPromptInjection = /ignore .*instructions|100% certain|100% confidence|no uncertainty/i.test(question);
+  const hasMediumOrHighDisagreement = result.disagreements.some(
+    (item) => item.severity === "medium" || item.severity === "high",
+  );
+  const highRiskDomain = ["Clinical", "Cybersecurity", "Finance"].includes(result.scenario_label);
+
+  const factors = [
+    averageRelevance >= 0.85
+      ? "High source relevance supports stronger grounding"
+      : averageRelevance >= 0.7
+        ? "Moderate source relevance leaves some uncertainty"
+        : "Lower source relevance reduces confidence",
+    result.agreement_score >= 0.7
+      ? "Strong agent agreement increased confidence"
+      : result.agreement_score >= 0.5
+        ? "Moderate agent disagreement kept confidence measured"
+        : "Material agent disagreement lowered confidence",
+  ];
+
+  if (missingEvidenceCount > 0 || result.disagreements.some((item) => item.kind === "missing_evidence")) {
+    factors.push("Missing evidence lowered confidence");
+  } else {
+    factors.push("Specialists cited retrieved sources consistently");
+  }
+
+  if (highRiskDomain) {
+    factors.push("High-risk domain requires caution");
+  } else if (hasMediumOrHighDisagreement) {
+    factors.push("Disagreement severity limited certainty");
+  } else {
+    factors.push("No high-severity disagreement detected");
+  }
+
+  if (hasPromptInjection) {
+    factors.push("Prompt injection detected, confidence reduced");
+  } else if (result.confidence_score < 0.5) {
+    factors.push("Overall confidence remains intentionally conservative");
+  }
+
+  return factors.slice(0, 5);
+}
+
+function sourceDisplayName(source: string) {
+  if (source === "Mock Foundry IQ Knowledge Base") {
+    return "Foundry IQ Retrieval Layer \u2014 Demo Corpus";
+  }
+  return source;
+}
+
+function sourceDisplaySnippet(snippet: string) {
+  return snippet.replace(/^Mock Foundry IQ source:/, "Demo corpus source:");
+}
+
+function disagreementWhyItMatters(kind: AnalyzeResponse["disagreements"][number]["kind"]) {
+  if (kind === "conflicting_recommendation") {
+    return "Agents are pointing toward different decision paths, so the judge must preserve conditions and boundaries.";
+  }
+  if (kind === "differing_confidence") {
+    return "Confidence spread shows which specialist view should receive extra scrutiny.";
+  }
+  return "Evidence gaps should lower certainty until more grounded context is available.";
+}
+
 export function ConsensusWorkbench() {
   const [question, setQuestion] = useState(starterQuestion);
+  const [analyzedQuestion, setAnalyzedQuestion] = useState(starterQuestion);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [progressIndex, setProgressIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const domainLabel = promptDomainLabel(question);
+
+  useEffect(() => {
+    if (!isLoading) return;
+
+    const interval = window.setInterval(() => {
+      setProgressIndex((current) => Math.min(current + 1, progressSteps.length - 1));
+    }, 650);
+
+    return () => window.clearInterval(interval);
+  }, [isLoading]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setResult(null);
+    setProgressIndex(0);
     setIsLoading(true);
 
     try {
-      setResult(await analyzeQuestion(question));
+      const response = await analyzeQuestion(question);
+      setResult(response);
+      setAnalyzedQuestion(question);
+      setProgressIndex(progressSteps.length);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to analyze question");
+      setProgressIndex(0);
     } finally {
       setIsLoading(false);
     }
@@ -106,18 +203,23 @@ export function ConsensusWorkbench() {
         </section>
 
         <section className="rounded-lg border border-border bg-card p-4">
-          <div className="grid gap-2 md:grid-cols-5">
+          <ol className="grid gap-3 md:grid-cols-5">
             {flowSteps.map((step, index) => (
-              <div key={step} className="flex items-center gap-2">
-                <div className="flex min-h-12 flex-1 items-center rounded-md border border-border bg-background px-3 text-sm">
-                  {step}
+              <li key={step} className="relative flex items-center gap-3">
+                <div className="flex min-h-16 flex-1 items-center gap-3 rounded-lg border border-border/80 bg-muted/20 px-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background font-mono text-xs text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
+                    {step}
+                  </span>
                 </div>
                 {index < flowSteps.length - 1 ? (
-                  <ChevronRight className="hidden h-4 w-4 text-muted-foreground md:block" />
+                  <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground/60 md:block" />
                 ) : null}
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
@@ -166,6 +268,12 @@ export function ConsensusWorkbench() {
                   )}
                   Analyze consensus
                 </Button>
+                {isLoading || result ? (
+                  <ReasoningProgress
+                    activeIndex={progressIndex}
+                    isComplete={Boolean(result) && !isLoading}
+                  />
+                ) : null}
               </form>
             </CardContent>
           </Card>
@@ -190,6 +298,17 @@ export function ConsensusWorkbench() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
                     <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-4">
+                    <h3 className="mb-3 text-sm font-semibold">Confidence Factors</h3>
+                    <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
+                      {getConfidenceFactors(result, analyzedQuestion).map((factor) => (
+                        <li key={factor} className="flex gap-2">
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                          <span>{factor}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                   {result.metadata ? (
                     <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
@@ -217,8 +336,8 @@ export function ConsensusWorkbench() {
                             </span>
                           </div>
                           <div className="text-sm font-medium">{source.title}</div>
-                          <div className="text-xs text-muted-foreground">{source.source}</div>
-                          <p className="mt-2 text-xs leading-5 text-muted-foreground">{source.snippet}</p>
+                          <div className="text-xs text-muted-foreground">{sourceDisplayName(source.source)}</div>
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
                           {source.url ? (
                             <a className="mt-2 block text-xs text-primary hover:underline" href={source.url}>
                               {source.url}
@@ -275,27 +394,41 @@ export function ConsensusWorkbench() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {result?.disagreements.map((item) => (
-                <div key={item.topic} className="rounded-lg border border-border bg-background p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-200" />
-                      <h3 className="text-sm font-semibold">{item.topic}</h3>
+              {result ? (
+                result.disagreements.length ? (
+                  result.disagreements.map((item) => (
+                    <div key={item.topic} className="rounded-lg border border-border bg-background p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-200" />
+                          <h3 className="text-sm font-semibold">{item.topic}</h3>
+                        </div>
+                        <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
+                          {item.severity}
+                        </Badge>
+                      </div>
+                      <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                        Why it matters: {disagreementWhyItMatters(item.kind)}
+                      </p>
+                      <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                        Agent viewpoints
+                      </div>
+                      <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
+                        {item.positions.map((position) => (
+                          <li key={position}>{position}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                        Resolution: {item.suggested_resolution}
+                      </p>
                     </div>
-                    <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
-                      {item.severity}
-                    </Badge>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-border bg-background p-4 text-sm leading-6 text-muted-foreground">
+                    No material disagreements detected. The agents still preserve limitations and missing evidence in their individual perspectives.
                   </div>
-                  <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
-                    {item.positions.map((position) => (
-                      <li key={position}>{position}</li>
-                    ))}
-                  </ul>
-                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    Resolution: {item.suggested_resolution}
-                  </p>
-                </div>
-              )) ?? (
+                )
+              ) : (
                 <div className="rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground">
                   Disagreement analysis appears after a question is analyzed.
                 </div>
@@ -313,6 +446,43 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-border bg-background p-4">
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div className="mt-2 font-mono text-3xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function ReasoningProgress({
+  activeIndex,
+  isComplete,
+}: {
+  activeIndex: number;
+  isComplete: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <div className="mb-3 text-sm font-semibold">Reasoning Progress</div>
+      <ol className="space-y-2">
+        {progressSteps.map((step, index) => {
+          const completed = isComplete || index < activeIndex;
+          const active = !isComplete && index === activeIndex;
+
+          return (
+            <li key={step} className="flex items-center gap-3 text-sm">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-card">
+                {completed ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
+                ) : active ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+                )}
+              </span>
+              <span className={completed || active ? "text-foreground" : "text-muted-foreground"}>
+                {step}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

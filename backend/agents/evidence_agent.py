@@ -167,6 +167,6 @@ class EvidenceAnalystNode:
             evidence_refs=refs,
             missing_evidence=domain_content["missing"],
             limitations=[
-                f"Fallback sources are mock Foundry IQ-style citations; live sources should verify {profile.primary_focus}."
+                f"Fallback sources are demo corpus citations; live Foundry IQ sources should verify {profile.primary_focus}."
             ],
         )

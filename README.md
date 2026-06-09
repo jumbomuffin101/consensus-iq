@@ -17,7 +17,7 @@ High-stakes decisions often depend on incomplete evidence, competing interpretat
 
 ## Solution Overview
 
-ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, detects the decision scenario, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with dynamic confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Foundry IQ integrations both have mock fallback providers.
+ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, detects the decision scenario, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with dynamic confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Foundry IQ integrations both have fallback providers.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ User Question
 
 - Multi-agent reasoning with planner, risk, evidence, alternatives, and consensus judge roles.
 - Microsoft Foundry IQ HTTP provider boundary with configurable endpoint, API key, index name, API version, request payload builder, and response parser.
-- Domain-specific mock Foundry IQ fallback sources for clinical, cybersecurity, research, enterprise, finance, and custom prompts.
+- Domain-specific Foundry IQ demo corpus fallback sources for clinical, cybersecurity, research, enterprise, finance, and custom prompts.
 - Azure OpenAI-ready LLM provider with retries, timeouts, and mock fallback.
 - Parallel specialist agent execution.
 - Structured disagreement detection.
@@ -61,7 +61,7 @@ User Question
 - **Backend:** Python 3.12, FastAPI, Pydantic
 - **Reasoning:** LangGraph-ready graph orchestration with deterministic local fallback
 - **LLM:** Azure OpenAI provider abstraction with mock fallback
-- **Retrieval:** Foundry IQ provider abstraction with mock fallback
+- **Retrieval:** Foundry IQ provider abstraction with demo corpus fallback
 
 ## Setup Instructions
 
@@ -105,7 +105,7 @@ FOUNDRY_IQ_API_VERSION=2024-05-01-preview
 
 The Microsoft IQ integration layer lives in `backend/retrieval/foundry.py`. That provider builds the HTTP request, sends the configured API key, targets the configured index, parses Foundry IQ search results into citation-ready `RetrievedContext` objects, and keeps provider-specific response mapping out of the agents.
 
-If Azure OpenAI or Foundry IQ is unavailable, ConsensusIQ falls back to mock providers and still returns a complete report. The mock Foundry IQ provider returns clearly marked, domain-specific sources so judges can evaluate the grounding flow even without live credentials.
+If Azure OpenAI or Foundry IQ is unavailable, ConsensusIQ falls back to local providers and still returns a complete report. The public demo uses a clearly marked Foundry IQ Retrieval Layer demo corpus when live endpoint/API-key/index credentials are not configured.
 
 ### Frontend
 
@@ -143,8 +143,8 @@ Should a 63-year-old patient with new-onset focal seizure receive MRI before lum
 - The agents do not simply agree by default; they expose risk, evidence, alternatives, and disagreement.
 - Claims are tied to visible source citation IDs.
 - The final answer includes confidence and agreement scores.
-- Foundry IQ is represented as the grounding layer that reduces hallucination by forcing evidence-backed claims through citation-ready retrieved context.
-- The demo remains reliable locally because Azure OpenAI and Foundry IQ both have fallback providers.
+- The codebase includes a Foundry IQ provider interface for live endpoint/API-key/index integration.
+- The public demo remains reliable because it uses a clearly labeled demo corpus fallback when Foundry IQ credentials are not configured.
 
 ## Screenshots
 
@@ -194,7 +194,7 @@ Returns:
 - Public disclaimer is shown in the app and README.
 - No secrets are committed; credentials belong only in local `.env` files.
 - Azure OpenAI failures fall back to deterministic mock reasoning.
-- Foundry IQ failures fall back to clearly marked mock sources.
+- Foundry IQ failures fall back to clearly marked demo corpus sources.
 - Source citations are visible so judges can inspect grounding.
 - No authentication or database is required for the local demo.
 
@@ -203,7 +203,7 @@ Returns:
 - Frontend production build passed with `npm run build`.
 - Backend `/analyze` was smoke tested through FastAPI.
 - Azure credentials are not committed.
-- Mock fallback allows a reliable demo even without Azure OpenAI or Foundry IQ credentials.
+- Local fallback providers allow a reliable demo even without Azure OpenAI or Foundry IQ credentials.
 
 ## Future Roadmap
 

@@ -4,7 +4,7 @@ from retrieval.base import BaseRetrievalProvider
 
 
 class MockRetrievalProvider(BaseRetrievalProvider):
-    """Local citation-ready retrieval provider used when Foundry IQ is unavailable."""
+    """Demo corpus provider used when live Foundry IQ credentials are unavailable."""
 
     name = "mock-foundry-iq"
 
@@ -16,9 +16,9 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             RetrievedContext(
                 citation_id=f"S{index}",
                 title=row["title"],
-                source="Mock Foundry IQ Knowledge Base",
+                source="Foundry IQ Retrieval Layer — Demo Corpus",
                 url=f"mock://foundry-iq/{domain}/{index}",
-                snippet=f"Mock Foundry IQ source: {row['snippet']}",
+                snippet=f"Demo corpus source: {row['snippet']}",
                 relevance_score=row["score"],
             )
             for index, row in enumerate(source_rows, start=1)
