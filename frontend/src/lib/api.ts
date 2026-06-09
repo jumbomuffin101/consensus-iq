@@ -48,16 +48,12 @@ export type AnalyzeResponse = {
 };
 
 function getApiBaseUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (configuredUrl) {
     return configuredUrl.replace(/\/$/, "");
   }
 
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:8000";
-  }
-
-  return "";
+  return "https://consensusiq-api.onrender.com";
 }
 
 export async function analyzeQuestion(
@@ -73,7 +69,7 @@ export async function analyzeQuestion(
     });
   } catch {
     throw new Error(
-      "Unable to reach the ConsensusIQ API. Confirm the backend is deployed and NEXT_PUBLIC_API_BASE_URL is set.",
+      "Unable to reach the ConsensusIQ API. Confirm the backend is deployed and NEXT_PUBLIC_API_URL is set.",
     );
   }
 
