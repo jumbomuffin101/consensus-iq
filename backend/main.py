@@ -25,7 +25,7 @@ app.add_middleware(
     allow_origins=[
         origin.strip()
         for origin in os.getenv(
-            "FRONTEND_ORIGIN", "http://localhost:3000,http://127.0.0.1:3000"
+            "FRONTEND_ORIGIN", "http://localhost:3000, http://127.0.0.1:3000"
         ).split(",")
         if origin.strip()
     ],
