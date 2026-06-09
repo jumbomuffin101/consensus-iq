@@ -3,9 +3,8 @@
 ## Mission
 
 ConsensusIQ is a multi-agent reasoning platform for transparent, evidence-based
-consensus decisions. The current implementation keeps retrieval and agents
-mocked, but the architecture is structured for Microsoft Foundry IQ and Azure
-OpenAI integration.
+consensus decisions. Retrieval is provider-based for Microsoft Foundry IQ with
+mock fallback, and agents are provider-based for Azure OpenAI with mock fallback.
 
 ## Shared State
 
@@ -57,9 +56,35 @@ retrieved context, and planner tasks, and returns a validated `AgentOutput`.
 The consensus judge receives all specialist outputs plus the deterministic
 disagreement report.
 
+## Foundry IQ Retrieval
+
+Retrieval providers live in `backend/retrieval`.
+
+- `retrieval/base.py`: provider contract, resilient fallback wrapper, and graph node.
+- `retrieval/foundry.py`: Foundry IQ HTTP provider and response normalization.
+- `retrieval/mock.py`: local citation-ready sources for reliable demos.
+- `retrieval/factory.py`: reads `FOUNDRY_IQ_*` environment variables and chooses
+  the provider.
+
+Foundry IQ reduces hallucination risk by grounding every agent in retrieved
+context before generation. The shared state stores citation-ready sources with
+`citation_id`, `title`, `source`, `url`, `snippet`, and `relevance_score`.
+Agents are instructed to cite `citation_id` values in `evidence_refs`.
+
+Required Foundry IQ variables:
+
+- `FOUNDRY_IQ_ENDPOINT`
+- `FOUNDRY_IQ_API_KEY`
+- `FOUNDRY_IQ_INDEX_NAME`
+- `FOUNDRY_IQ_API_VERSION`
+
+If any value is missing or the provider fails, `MockRetrievalProvider` returns
+clearly marked mock sources so `/analyze` remains reliable.
+
 ## Node Responsibilities
 
-- `RetrievalNode`: returns mocked Foundry IQ `RetrievedContext` records.
+- `RetrievalNode`: retrieves citation-ready `RetrievedContext` records from
+  Foundry IQ or mock fallback.
 - `PlannerNode`: decomposes the question into structured reasoning tasks.
 - `RiskAnalystNode`: identifies risks, limitations, and failure modes.
 - `EvidenceAnalystNode`: evaluates evidence and supporting rationale.
@@ -81,8 +106,8 @@ agreement score used by the consensus judge.
 
 ## Extension Points
 
-- Replace `retrieve_evidence` with Microsoft Foundry IQ retrieval while
-  preserving `RetrievedContext`.
+- Adjust Foundry IQ response normalization in `retrieval/foundry.py` if the live
+  project returns different field names.
 - Replace mocked specialist node bodies with Azure OpenAI calls that return
   `AgentOutput`; the provider abstraction already supports this.
 - Add more specialist nodes by registering them in `ConsensusReasoningGraph`.
@@ -95,4 +120,4 @@ agreement score used by the consensus judge.
 - No authentication.
 - No database.
 - No deployment-specific configuration.
-- No Azure API calls yet.
+- No authentication, database, or deployment-specific configuration.

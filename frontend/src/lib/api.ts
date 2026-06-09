@@ -22,6 +22,15 @@ export type Disagreement = {
   suggested_resolution: string;
 };
 
+export type Source = {
+  citation_id: string;
+  title: string;
+  source: string;
+  url: string;
+  snippet: string;
+  relevance_score: number;
+};
+
 export type AnalyzeResponse = {
   consensus: string;
   confidence_score: number;
@@ -29,6 +38,7 @@ export type AnalyzeResponse = {
   reasoning_summary: string;
   agent_outputs: AgentOutput[];
   disagreements: Disagreement[];
+  sources: Source[];
 };
 
 const API_BASE_URL =

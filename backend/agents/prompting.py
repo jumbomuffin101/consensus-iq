@@ -9,6 +9,10 @@ def state_context_payload(state: ReasoningState) -> str:
         "question": state.question,
         "retrieved_context": [item.dict() for item in state.retrieved_context],
         "reasoning_tasks": [task.dict() for task in state.reasoning_tasks],
+        "citation_instruction": (
+            "Use retrieved_context for evidence-based claims. Cite sources by "
+            "citation_id in evidence_refs, for example S1 or S2."
+        ),
     }
     return json.dumps(payload, indent=2)
 

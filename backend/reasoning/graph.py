@@ -9,7 +9,7 @@ from agents.risk_agent import RiskAnalystNode
 from llm.base import BaseLLMProvider
 from llm.factory import create_llm_provider
 from models.reasoning import ReasoningState
-from retrieval.foundry import RetrievalNode
+from retrieval import RetrievalNode
 
 
 class GraphEnvelope(TypedDict):

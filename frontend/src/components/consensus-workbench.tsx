@@ -104,6 +104,29 @@ export function ConsensusWorkbench() {
                     <Metric label="Confidence" value={asPercent(result.confidence_score)} />
                     <Metric label="Agreement" value={asPercent(result.agreement_score)} />
                   </div>
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold">Sources</h3>
+                    <div className="space-y-3">
+                      {result.sources.map((source) => (
+                        <div key={source.citation_id} className="rounded-lg border border-border bg-background p-3">
+                          <div className="mb-1 flex items-center justify-between gap-3">
+                            <span className="font-mono text-xs text-primary">{source.citation_id}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {asPercent(source.relevance_score)}
+                            </span>
+                          </div>
+                          <div className="text-sm font-medium">{source.title}</div>
+                          <div className="text-xs text-muted-foreground">{source.source}</div>
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">{source.snippet}</p>
+                          {source.url ? (
+                            <a className="mt-2 block text-xs text-primary hover:underline" href={source.url}>
+                              {source.url}
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </>
               ) : (
                 <EmptyState />

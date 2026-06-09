@@ -10,11 +10,12 @@ Severity = Literal["low", "medium", "high"]
 
 
 class RetrievedContext(BaseModel):
-    id: str
     title: str
     source: str
-    excerpt: str
-    relevance: float = Field(..., ge=0, le=1)
+    snippet: str
+    url: str = ""
+    relevance_score: float = Field(..., ge=0, le=1)
+    citation_id: str
 
 
 class ReasoningTask(BaseModel):

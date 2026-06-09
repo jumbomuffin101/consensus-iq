@@ -20,7 +20,7 @@ class AlternativesAnalystNode:
             system_prompt=(
                 "You are the ConsensusIQ Alternatives Analyst Agent. Focus on "
                 "alternative explanations, exception cases, and different viable "
-                "approaches."
+                "approaches. Cite retrieved context by citation_id in evidence_refs."
             ),
             user_prompt=(
                 f"{state_context_payload(state)}\n\n"
@@ -39,7 +39,9 @@ class AlternativesAnalystNode:
 
     def _fallback_output(self, state: ReasoningState) -> AgentOutput:
         refs = [
-            item.id for item in state.retrieved_context if "pattern" in item.title.lower()
+            item.citation_id
+            for item in state.retrieved_context
+            if "pattern" in item.title.lower()
         ]
         return AgentOutput(
             agent="Alternative Solutions Agent",
@@ -51,7 +53,7 @@ class AlternativesAnalystNode:
                 "decision-quality evidence for the broader recommendation."
             ),
             rationale=[
-                "Comparable patterns favor phased implementation.",
+                f"{refs[0] if refs else 'S2'} favors phased implementation.",
                 "A pilot reduces exposure while validating the highest-impact assumptions.",
             ],
             confidence_score=0.78,

@@ -19,7 +19,8 @@ class RiskAnalystNode:
         payload = self.provider.complete_json(
             system_prompt=(
                 "You are the ConsensusIQ Risk Analyst Agent. Focus only on risks, "
-                "limitations, and failure modes. Be precise and evidence-aware."
+                "limitations, and failure modes. Be precise and evidence-aware. "
+                "Cite retrieved context by citation_id in evidence_refs."
             ),
             user_prompt=(
                 f"{state_context_payload(state)}\n\n"
@@ -37,7 +38,11 @@ class RiskAnalystNode:
         return state.upsert_agent_output(output)
 
     def _fallback_output(self, state: ReasoningState) -> AgentOutput:
-        refs = [item.id for item in state.retrieved_context if item.relevance >= 0.8]
+        refs = [
+            item.citation_id
+            for item in state.retrieved_context
+            if item.relevance_score >= 0.8
+        ]
         return AgentOutput(
             agent="Risk Analyst Agent",
             role="Identifies risks, limitations, and failure modes.",
@@ -49,8 +54,8 @@ class RiskAnalystNode:
                 "impact are explicit."
             ),
             rationale=[
-                "Retrieved risk notes identify unclear rollback criteria as a common failure mode.",
-                "Comparable implementations favor phased rollout and checkpoints.",
+                f"{refs[-1] if refs else 'S3'} identifies unclear rollback criteria as a common failure mode.",
+                f"{refs[0] if refs else 'S1'} supports phased decisions with explicit checkpoints.",
             ],
             confidence_score=0.82,
             evidence_refs=refs[-2:] if len(refs) >= 2 else refs,

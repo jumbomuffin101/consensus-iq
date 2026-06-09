@@ -20,7 +20,8 @@ class EvidenceAnalystNode:
             system_prompt=(
                 "You are the ConsensusIQ Evidence Analyst Agent. Focus on "
                 "supporting evidence, justification, and whether the retrieved "
-                "context actually supports the recommendation."
+                "context actually supports the recommendation. Cite retrieved "
+                "context by citation_id in evidence_refs."
             ),
             user_prompt=(
                 f"{state_context_payload(state)}\n\n"
@@ -38,7 +39,7 @@ class EvidenceAnalystNode:
         return state.upsert_agent_output(output)
 
     def _fallback_output(self, state: ReasoningState) -> AgentOutput:
-        refs = [item.id for item in state.retrieved_context]
+        refs = [item.citation_id for item in state.retrieved_context]
         return AgentOutput(
             agent="Evidence Analyst Agent",
             role="Evaluates evidence and separates grounded claims from assumptions.",
@@ -49,9 +50,9 @@ class EvidenceAnalystNode:
                 "especially where success criteria and checkpoints are defined."
             ),
             rationale=[
-                "The highest-relevance context directly matches the user's question.",
-                "Comparable patterns support phased execution with measurable checkpoints.",
-                "Risk notes provide conditions that can be incorporated into the final decision.",
+                f"{refs[0] if refs else 'S1'} directly matches the user's question.",
+                f"{refs[1] if len(refs) > 1 else 'S2'} supports phased execution with measurable checkpoints.",
+                f"{refs[2] if len(refs) > 2 else 'S3'} provides risk conditions for the final decision.",
             ],
             confidence_score=0.9,
             evidence_refs=refs,

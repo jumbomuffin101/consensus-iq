@@ -2,13 +2,13 @@
 
 Evidence-based agent consensus platform for the Microsoft Agents League hackathon.
 
-ConsensusIQ demonstrates a grounded multi-agent reasoning workflow using mocked Foundry IQ retrieval, typed shared state, graph-based agent orchestration, disagreement detection, and transparent consensus scoring. The current MVP is intentionally local-first and extensible, with Azure integration points isolated for later work.
+ConsensusIQ demonstrates a grounded multi-agent reasoning workflow using Foundry IQ-ready retrieval, typed shared state, graph-based agent orchestration, disagreement detection, and transparent consensus scoring. The current MVP is intentionally local-first and uses mock fallbacks when external services are unavailable.
 
 ## Stack
 
 - Frontend: Next.js 15, TypeScript, Tailwind CSS, shadcn-style local UI primitives
 - Backend: Python 3.12, FastAPI, LangGraph-ready agent modules
-- Retrieval: mocked Foundry IQ adapter
+- Retrieval: Microsoft Foundry IQ provider abstraction with mock fallback
 - Persistence/auth: none for MVP
 
 ## Local Setup
@@ -46,7 +46,20 @@ AZURE_OPENAI_DEPLOYMENT=your-deployment-name
 AZURE_OPENAI_API_VERSION=2024-10-21
 ```
 
-No Foundry IQ integration is required yet; retrieval remains mocked.
+### Foundry IQ Retrieval
+
+Foundry IQ is the grounding layer. It retrieves citation-ready context before agents reason, so specialist outputs can cite `citation_id` values instead of relying only on model memory. This reduces hallucination risk by making evidence visible, auditable, and available in the API response.
+
+Set these in `backend/.env` to enable Foundry IQ retrieval:
+
+```bash
+FOUNDRY_IQ_ENDPOINT=https://your-foundry-iq-endpoint
+FOUNDRY_IQ_API_KEY=your-key
+FOUNDRY_IQ_INDEX_NAME=your-index-name
+FOUNDRY_IQ_API_VERSION=2024-05-01-preview
+```
+
+If any value is missing or Foundry IQ is unavailable, the backend uses mock retrieval and still returns clearly marked mock sources.
 
 The API runs at `http://localhost:8000`.
 
@@ -80,7 +93,17 @@ Returns:
   "agreement_score": 0.87,
   "reasoning_summary": "...",
   "agent_outputs": [],
-  "disagreements": []
+  "disagreements": [],
+  "sources": [
+    {
+      "citation_id": "S1",
+      "title": "...",
+      "source": "...",
+      "url": "...",
+      "snippet": "...",
+      "relevance_score": 0.92
+    }
+  ]
 }
 ```
 

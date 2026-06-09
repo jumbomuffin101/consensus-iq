@@ -38,7 +38,8 @@ class ConsensusJudgeNode:
                 f"approach to '{state.question}'. The evidence analyst supports the "
                 "direction, the risk analyst requires explicit gates, and the "
                 "alternatives analyst recommends limiting initial scope before broader "
-                "commitment."
+                "commitment. The recommendation is grounded in the retrieved sources "
+                "cited by the specialist agents."
             ),
             confidence_score=confidence_score,
             agreement_score=agreement_score,
@@ -50,10 +51,13 @@ class ConsensusJudgeNode:
             system_prompt=(
                 "You are the ConsensusIQ Consensus Judge. Synthesize independent "
                 "specialist outputs and the disagreement report into a transparent, "
-                "decision-ready recommendation. Preserve uncertainty."
+                "decision-ready recommendation. Preserve uncertainty. Use retrieved "
+                "context citations already present in evidence_refs whenever making "
+                "evidence-based claims."
             ),
             user_prompt=(
                 f"Question: {state.question}\n\n"
+                f"Retrieved context:\n{[item.dict() for item in state.retrieved_context]}\n\n"
                 f"Agent outputs:\n{agent_outputs_payload(state)}\n\n"
                 f"Disagreements:\n{disagreements_payload(state_with_disagreements)}\n\n"
                 "Return JSON with keys: consensus, confidence_score, "
