@@ -3,6 +3,7 @@ from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import ConsensusJudgment, ReasoningState
 from reasoning.disagreement import DisagreementDetector
+from reasoning.domain import bounded_score, build_domain_profile
 
 
 class ConsensusJudgeNode:
@@ -23,28 +24,28 @@ class ConsensusJudgeNode:
     def __call__(self, state: ReasoningState) -> ReasoningState:
         disagreements = self.detector.detect(state.agent_outputs)
         agreement_score = self.detector.calculate_agreement_score(state.agent_outputs)
+        profile = build_domain_profile(state)
         avg_confidence = (
             sum(output.confidence_score for output in state.agent_outputs)
             / len(state.agent_outputs)
             if state.agent_outputs
             else 0.0
         )
-        confidence_score = round((avg_confidence * 0.7) + (agreement_score * 0.3), 2)
+        confidence_score = bounded_score(
+            (avg_confidence * 0.42)
+            + (agreement_score * 0.28)
+            + (profile.evidence_quality * 0.22)
+            + (profile.source_certainty * 0.12)
+            - (profile.ambiguity * 0.2)
+        )
 
         state_with_disagreements = state.copy(update={"disagreements": disagreements})
         fallback_judgment = ConsensusJudgment(
-            consensus=(
-                "Consensus recommendation: proceed with a phased, evidence-tracked "
-                f"approach to '{state.question}'. The evidence analyst supports the "
-                "direction, the risk analyst requires explicit gates, and the "
-                "alternatives analyst recommends limiting initial scope before broader "
-                "commitment. The recommendation is grounded in the retrieved sources "
-                "cited by the specialist agents."
-            ),
+            consensus=self._build_consensus(state, profile.domain),
             confidence_score=confidence_score,
             agreement_score=agreement_score,
             reasoning_summary=self._build_reasoning_summary(
-                state_with_disagreements, disagreements
+                state_with_disagreements, disagreements, profile.domain
             ),
         )
         payload = self.provider.complete_json(
@@ -81,15 +82,59 @@ class ConsensusJudgeNode:
             }
         )
 
-    def _build_reasoning_summary(self, state: ReasoningState, disagreements: list) -> str:
+    def _build_consensus(self, state: ReasoningState, domain: str) -> str:
+        outputs = {output.agent: output for output in state.agent_outputs}
+        risk = outputs.get("Risk Analyst Agent")
+        evidence = outputs.get("Evidence Analyst Agent")
+        alternatives = outputs.get("Alternative Solutions Agent")
+
+        domain_opening = {
+            "clinical": "Clinical consensus",
+            "cybersecurity": "Cybersecurity consensus",
+            "research": "Research evaluation consensus",
+            "enterprise": "Enterprise risk consensus",
+            "custom": "Custom decision consensus",
+        }[domain]
+
+        clauses = []
+        if evidence:
+            clauses.append(f"Evidence view: {evidence.recommendation}")
+        if risk:
+            clauses.append(f"Risk view: {risk.recommendation}")
+        if alternatives:
+            clauses.append(f"Alternative view: {alternatives.recommendation}")
+
+        if domain == "clinical":
+            recommendation = "prioritize patient safety and diagnostic sequencing before invasive steps"
+        elif domain == "enterprise":
+            recommendation = "use governance, approved tooling, and confidentiality controls before allowing broad AI use"
+        elif domain == "cybersecurity":
+            recommendation = "base action on containment, investigation, compliance duties, and verified exposure"
+        elif domain == "research":
+            recommendation = "avoid single-grader dependence until validity, bias, and reliability are demonstrated"
+        else:
+            recommendation = "make the decision conditional on the strongest cited evidence and unresolved risks"
+
+        return (
+            f"{domain_opening}: {recommendation}. "
+            + " ".join(clauses)
+            + " The final recommendation is grounded in the cited retrieved sources and preserves the main disagreement points."
+        )
+
+    def _build_reasoning_summary(
+        self, state: ReasoningState, disagreements: list, domain: str
+    ) -> str:
         task_summary = "; ".join(task.description for task in state.reasoning_tasks)
         disagreement_summary = (
             "; ".join(item.topic for item in disagreements)
             if disagreements
             else "No material disagreements detected."
         )
+        agent_summary = " ".join(
+            f"{output.agent}: {output.conclusion}" for output in state.agent_outputs
+        )
         return (
-            f"Planner decomposed the question into: {task_summary}. Specialist "
-            f"agents reviewed risk, evidence, and alternatives independently. "
+            f"Domain detected: {domain}. Planner tasks: {task_summary}. "
+            f"Independent findings: {agent_summary} "
             f"Detected disagreement areas: {disagreement_summary}."
         )

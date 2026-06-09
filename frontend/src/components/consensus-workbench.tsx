@@ -49,11 +49,20 @@ function asPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function promptDomainLabel(question: string) {
+  const preset = demoPrompts.find((prompt) => prompt.question === question);
+  if (preset?.label === "Clinical Reasoning") return "Clinical";
+  if (preset?.label === "Enterprise Risk") return "Enterprise";
+  if (preset?.label === "Research Evaluation") return "Research";
+  return "Custom";
+}
+
 export function ConsensusWorkbench() {
   const [question, setQuestion] = useState(starterQuestion);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const domainLabel = promptDomainLabel(question);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -121,6 +130,10 @@ export function ConsensusWorkbench() {
             </CardHeader>
             <CardContent>
               <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+                <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Prompt type</span>
+                  <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{domainLabel}</Badge>
+                </div>
                 <div className="grid gap-2">
                   {demoPrompts.map((prompt) => (
                     <Button

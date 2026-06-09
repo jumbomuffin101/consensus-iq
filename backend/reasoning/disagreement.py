@@ -24,13 +24,28 @@ class DisagreementDetector:
             return 0.0
 
         disagreements = self.detect(outputs)
+        similarities = [
+            self._token_similarity(left.recommendation, right.recommendation)
+            for index, left in enumerate(outputs)
+            for right in outputs[index + 1 :]
+        ]
+        semantic_alignment = sum(similarities) / len(similarities) if similarities else 0.5
+        confidence_values = [output.confidence_score for output in outputs]
+        confidence_spread = max(confidence_values) - min(confidence_values)
+        evidence_coverage = sum(1 for output in outputs if output.evidence_refs) / len(outputs)
         severity_penalty = sum(
             {"low": 0.05, "medium": 0.12, "high": 0.22}[item.severity]
             for item in disagreements
         )
-        stance_count = len({output.stance for output in outputs})
-        diversity_penalty = max(0, stance_count - 1) * 0.04
-        return round(max(0.0, min(1.0, 1.0 - severity_penalty - diversity_penalty)), 2)
+        raw_score = (
+            0.35
+            + (semantic_alignment * 0.34)
+            + (evidence_coverage * 0.18)
+            + self._domain_alignment_bonus(outputs)
+            - (confidence_spread * 0.22)
+            - severity_penalty
+        )
+        return round(max(0.05, min(0.98, raw_score)), 2)
 
     def _detect_conflicting_recommendations(
         self, outputs: list[AgentOutput]
@@ -40,7 +55,7 @@ class DisagreementDetector:
             key = self._recommendation_group(output.recommendation)
             recommendation_groups.setdefault(key, []).append(output)
 
-        if len(recommendation_groups) <= 1:
+        if len(recommendation_groups) <= 1 or self._recommendations_are_complementary(outputs):
             return []
 
         return [
@@ -121,12 +136,61 @@ class DisagreementDetector:
 
     def _recommendation_group(self, recommendation: str) -> str:
         normalized = recommendation.lower()
-        if "do not" in normalized or "avoid" in normalized:
+        if "do not" in normalized or "avoid" in normalized or "restrict" in normalized:
             return "avoid"
-        if "pilot" in normalized or "limited" in normalized:
+        if "pilot" in normalized or "limited" in normalized or "controlled" in normalized:
             return "pilot"
-        if "proceed" in normalized or "support" in normalized:
+        if "proceed" in normalized or "support" in normalized or "favor" in normalized:
             return "proceed"
         if "caution" in normalized or "gate" in normalized:
             return "caution"
+        if "compare" in normalized or "consider" in normalized:
+            return "compare"
         return normalized[:40]
+
+    def _recommendations_are_complementary(self, outputs: list[AgentOutput]) -> bool:
+        text = " ".join(output.recommendation.lower() for output in outputs)
+        if "do not" in text and ("support" in text or "favor" in text):
+            return False
+        if "restrict" in text and "unrestricted" in text:
+            return False
+        return any(
+            term in text
+            for term in ["controlled", "calibration", "imaging", "approved", "hybrid"]
+        )
+
+    def _token_similarity(self, left: str, right: str) -> float:
+        stopwords = {
+            "a",
+            "an",
+            "and",
+            "or",
+            "the",
+            "to",
+            "for",
+            "with",
+            "before",
+            "after",
+            "use",
+            "using",
+        }
+        left_tokens = {token for token in left.lower().replace("-", " ").split() if token not in stopwords}
+        right_tokens = {token for token in right.lower().replace("-", " ").split() if token not in stopwords}
+        if not left_tokens or not right_tokens:
+            return 0.0
+        return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+    def _domain_alignment_bonus(self, outputs: list[AgentOutput]) -> float:
+        text = " ".join(
+            f"{output.recommendation} {output.conclusion}".lower()
+            for output in outputs
+        )
+        if all(term in text for term in ["mri", "lp"]) or "lumbar puncture" in text:
+            return -0.02
+        if all(term in text for term in ["public ai", "confidential"]):
+            return 0.08
+        if all(term in text for term in ["grader", "validity"]):
+            return 0.03
+        if "custom question" in text or "decision criteria" in text:
+            return -0.03
+        return 0.0
