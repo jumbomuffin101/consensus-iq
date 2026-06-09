@@ -1,7 +1,14 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { AlertTriangle, BrainCircuit, CheckCircle2, Loader2, Scale } from "lucide-react";
+import {
+  AlertTriangle,
+  BrainCircuit,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  Scale,
+} from "lucide-react";
 
 import { analyzeQuestion, type AnalyzeResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +17,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 
 const starterQuestion =
-  "Should our product team adopt AI-assisted triage for incoming customer feedback?";
+  "Should a 63-year-old patient with new-onset focal seizure receive MRI before lumbar puncture?";
+
+const demoPrompts = [
+  {
+    label: "Clinical Reasoning",
+    question:
+      "Should a 63-year-old patient with new-onset focal seizure receive MRI before lumbar puncture?",
+  },
+  {
+    label: "Enterprise Risk",
+    question:
+      "Should our company allow employees to use public AI tools for confidential client documents?",
+  },
+  {
+    label: "Research Evaluation",
+    question:
+      "Should a research team trust a single LLM grader for evaluating student concept maps?",
+  },
+];
+
+const flowSteps = [
+  "Question",
+  "Foundry IQ Retrieval",
+  "Specialist Agents",
+  "Disagreement Analysis",
+  "Consensus Judge",
+];
 
 function asPercent(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -49,23 +82,52 @@ export function ConsensusWorkbench() {
               ConsensusIQ
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Evidence-based agent consensus with mocked Foundry IQ retrieval,
-              disagreement analysis, and decision confidence scoring.
+              ConsensusIQ asks multiple specialist AI agents to reason independently,
+              compares their conclusions, detects disagreement, and produces an
+              evidence-grounded consensus using Microsoft Foundry IQ-style retrieval.
             </p>
           </div>
-          <Badge tone="success" className="w-fit">Mocked vertical slice</Badge>
+          <Badge tone="success" className="w-fit">Judge-ready demo</Badge>
         </header>
+
+        <section className="rounded-lg border border-border bg-card p-4">
+          <div className="grid gap-2 md:grid-cols-5">
+            {flowSteps.map((step, index) => (
+              <div key={step} className="flex items-center gap-2">
+                <div className="flex min-h-12 flex-1 items-center rounded-md border border-border bg-background px-3 text-sm">
+                  {step}
+                </div>
+                {index < flowSteps.length - 1 ? (
+                  <ChevronRight className="hidden h-4 w-4 text-muted-foreground md:block" />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
           <Card>
             <CardHeader>
               <CardTitle>Question</CardTitle>
               <CardDescription>
-                Submit a decision prompt for the agent panel.
+                Choose a demo scenario or submit your own decision prompt.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+                <div className="grid gap-2">
+                  {demoPrompts.map((prompt) => (
+                    <Button
+                      key={prompt.label}
+                      type="button"
+                      variant={question === prompt.question ? "secondary" : "ghost"}
+                      className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+                      onClick={() => setQuestion(prompt.question)}
+                    >
+                      <span className="font-semibold">{prompt.label}</span>
+                    </Button>
+                  ))}
+                </div>
                 <Textarea
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
@@ -91,7 +153,7 @@ export function ConsensusWorkbench() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Consensus Answer</CardTitle>
+              <CardTitle>Final Consensus</CardTitle>
               <CardDescription>
                 Final synthesis from the consensus judge.
               </CardDescription>
@@ -101,8 +163,14 @@ export function ConsensusWorkbench() {
                 <>
                   <p className="text-sm leading-6 text-foreground">{result.consensus}</p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Metric label="Confidence" value={asPercent(result.confidence_score)} />
-                    <Metric label="Agreement" value={asPercent(result.agreement_score)} />
+                    <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
+                    <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-4">
+                    <h3 className="mb-2 text-sm font-semibold">Reasoning Summary</h3>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      {result.reasoning_summary}
+                    </p>
                   </div>
                   <div className="space-y-3">
                     <h3 className="text-sm font-semibold">Sources</h3>
@@ -138,7 +206,7 @@ export function ConsensusWorkbench() {
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card>
             <CardHeader>
-              <CardTitle>Agent Outputs</CardTitle>
+              <CardTitle>Agent Perspectives</CardTitle>
               <CardDescription>
                 Specialist reasoning traces returned by the API.
               </CardDescription>
@@ -154,9 +222,12 @@ export function ConsensusWorkbench() {
                   </div>
                   <p className="mb-3 text-xs leading-5 text-muted-foreground">{agent.role}</p>
                   <p className="text-sm leading-6">{agent.conclusion}</p>
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Recommendation: {agent.recommendation}
+                  </p>
                   <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
                     <span>Confidence {asPercent(agent.confidence_score)}</span>
-                    <span>{agent.evidence_refs.join(", ")}</span>
+                    <span>{agent.evidence_refs.length ? agent.evidence_refs.join(", ") : "No citation"}</span>
                   </div>
                 </article>
               )) ?? <PlaceholderRows />}
@@ -187,6 +258,9 @@ export function ConsensusWorkbench() {
                       <li key={position}>{position}</li>
                     ))}
                   </ul>
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Resolution: {item.suggested_resolution}
+                  </p>
                 </div>
               )) ?? (
                 <div className="rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground">

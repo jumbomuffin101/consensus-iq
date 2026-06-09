@@ -107,6 +107,25 @@ Returns:
 }
 ```
 
+## Demo Script
+
+### 60-second explanation
+
+ConsensusIQ is an evidence-grounded consensus platform. A user asks a decision question, Foundry IQ-style retrieval returns citation-ready sources, and multiple specialist agents reason independently: risk, evidence, and alternatives. ConsensusIQ then compares their conclusions, detects disagreement, and produces a final recommendation with confidence and agreement scores.
+
+### Recommended demo prompt
+
+```text
+Should a 63-year-old patient with new-onset focal seizure receive MRI before lumbar puncture?
+```
+
+### What judges should notice
+
+- The agents do not simply agree by default; they expose risk, evidence, alternatives, and disagreement.
+- Claims are tied back to visible source citation IDs.
+- The final answer includes both confidence and agreement, making uncertainty explicit.
+- The demo remains reliable locally because Azure OpenAI and Foundry IQ both have mock fallback providers.
+
 ## Project Structure
 
 ```text
