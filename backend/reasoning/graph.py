@@ -1,4 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+from time import perf_counter
 from typing import Any, Callable, TypedDict
 
 from agents.alternatives_agent import AlternativesAnalystNode
@@ -14,6 +16,9 @@ from retrieval import RetrievalNode
 
 class GraphEnvelope(TypedDict):
     state: dict[str, Any]
+
+
+logger = logging.getLogger("consensus_iq.reasoning")
 
 
 class ConsensusReasoningGraph:
@@ -43,13 +48,18 @@ class ConsensusReasoningGraph:
         self._compiled_graph = self._compile_langgraph()
 
     def invoke(self, question: str) -> ReasoningState:
+        start = perf_counter()
         initial_state = ReasoningState(question=question.strip())
 
         if self._compiled_graph is None:
-            return self._invoke_local_graph(initial_state)
+            final_state = self._invoke_local_graph(initial_state)
+        else:
+            result = self._compiled_graph.invoke({"state": initial_state.dict()})
+            final_state = ReasoningState.parse_obj(result["state"])
 
-        result = self._compiled_graph.invoke({"state": initial_state.dict()})
-        return ReasoningState.parse_obj(result["state"])
+        execution_time_ms = self._elapsed_ms(start)
+        logger.info("analysis completed in %sms", execution_time_ms)
+        return final_state.with_timing("execution_time_ms", execution_time_ms)
 
     def _compile_langgraph(self) -> Any | None:
         try:
@@ -59,7 +69,7 @@ class ConsensusReasoningGraph:
 
         graph = StateGraph(GraphEnvelope)
         for name, node in self.nodes:
-            graph.add_node(name, self._as_langgraph_node(node))
+            graph.add_node(name, self._as_langgraph_node(name, node))
 
         graph.set_entry_point("retrieval")
         graph.add_edge("retrieval", "planner")
@@ -69,22 +79,23 @@ class ConsensusReasoningGraph:
         return graph.compile()
 
     def _as_langgraph_node(
-        self, node: Callable[[ReasoningState], ReasoningState]
+        self, name: str, node: Callable[[ReasoningState], ReasoningState]
     ) -> Callable[[GraphEnvelope], GraphEnvelope]:
         def wrapped(envelope: GraphEnvelope) -> GraphEnvelope:
             current_state = ReasoningState.parse_obj(envelope["state"])
-            next_state = node(current_state)
+            next_state = self._run_timed_node(name, node, current_state)
             return {"state": next_state.dict()}
 
         return wrapped
 
     def _invoke_local_graph(self, state: ReasoningState) -> ReasoningState:
         current_state = state
-        for _, node in self.nodes:
-            current_state = node(current_state)
+        for name, node in self.nodes:
+            current_state = self._run_timed_node(name, node, current_state)
         return current_state
 
     def _run_specialists_parallel(self, state: ReasoningState) -> ReasoningState:
+        start = perf_counter()
         outputs_by_agent: dict[str, Any] = {}
 
         with ThreadPoolExecutor(max_workers=len(self.specialist_nodes)) as executor:
@@ -109,7 +120,33 @@ class ConsensusReasoningGraph:
             ]
             if agent_name in outputs_by_agent
         ]
-        return state.copy(update={"agent_outputs": ordered_outputs})
+        elapsed_ms = self._elapsed_ms(start)
+        logger.info("specialist agents completed in %sms", elapsed_ms)
+        return state.copy(update={"agent_outputs": ordered_outputs}).with_timing(
+            "agent_time_ms", elapsed_ms
+        )
+
+    def _run_timed_node(
+        self,
+        name: str,
+        node: Callable[[ReasoningState], ReasoningState],
+        state: ReasoningState,
+    ) -> ReasoningState:
+        start = perf_counter()
+        next_state = node(state)
+        elapsed_ms = self._elapsed_ms(start)
+        logger.info("%s completed in %sms", name, elapsed_ms)
+
+        timing_field = {
+            "retrieval": "retrieval_time_ms",
+            "consensus_judge": "consensus_time_ms",
+        }.get(name)
+        if timing_field:
+            return next_state.with_timing(timing_field, elapsed_ms)
+        return next_state
+
+    def _elapsed_ms(self, start: float) -> int:
+        return int((perf_counter() - start) * 1000)
 
 
 def analyze_question(question: str) -> ReasoningState:

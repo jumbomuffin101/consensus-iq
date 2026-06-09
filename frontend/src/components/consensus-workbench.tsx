@@ -172,6 +172,14 @@ export function ConsensusWorkbench() {
                     <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
                     <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
                   </div>
+                  {result.metadata ? (
+                    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                      <RuntimeMetric label="Total" value={result.metadata.execution_time_ms} />
+                      <RuntimeMetric label="Retrieval" value={result.metadata.retrieval_time_ms} />
+                      <RuntimeMetric label="Agents" value={result.metadata.agent_time_ms} />
+                      <RuntimeMetric label="Consensus" value={result.metadata.consensus_time_ms} />
+                    </div>
+                  ) : null}
                   <div className="rounded-lg border border-border bg-background p-4">
                     <h3 className="mb-2 text-sm font-semibold">Reasoning Summary</h3>
                     <p className="text-sm leading-6 text-muted-foreground">
@@ -286,6 +294,15 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-border bg-background p-4">
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div className="mt-2 font-mono text-3xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function RuntimeMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2">
+      <span>{label}</span>
+      <span className="float-right font-mono">{value}ms</span>
     </div>
   );
 }

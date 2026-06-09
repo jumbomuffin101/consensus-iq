@@ -1,7 +1,12 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from models.reasoning import AgentOutput, Disagreement, RetrievedContext
+from models.reasoning import (
+    AgentOutput,
+    Disagreement,
+    ExecutionMetadata,
+    RetrievedContext,
+)
 from reasoning.graph import analyze_question
 
 router = APIRouter()
@@ -19,6 +24,7 @@ class AnalyzeResponse(BaseModel):
     agent_outputs: list[AgentOutput]
     disagreements: list[Disagreement]
     sources: list[RetrievedContext]
+    metadata: ExecutionMetadata | None = None
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -32,4 +38,5 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         agent_outputs=state.agent_outputs,
         disagreements=state.disagreements,
         sources=state.retrieved_context,
+        metadata=state.metadata,
     )

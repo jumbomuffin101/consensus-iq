@@ -114,6 +114,14 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Deployment Readiness
+
+- Backend Dockerfile: `backend/Dockerfile`
+- Local Docker Compose: `docker-compose.yml`
+- Deployment guide: `docs/deployment.md`
+- Backend health checks: `GET /health` and `GET /ready`
+- `POST /analyze` includes optional timing metadata for demo observability.
+
 ## Demo Script
 
 ### 60-second explanation

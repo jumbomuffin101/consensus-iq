@@ -39,22 +39,57 @@ export type AnalyzeResponse = {
   agent_outputs: AgentOutput[];
   disagreements: Disagreement[];
   sources: Source[];
+  metadata?: {
+    execution_time_ms: number;
+    retrieval_time_ms: number;
+    agent_time_ms: number;
+    consensus_time_ms: number;
+  };
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+function getApiBaseUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/$/, "");
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:8000";
+  }
+
+  return "";
+}
 
 export async function analyzeQuestion(
   question: string,
 ): Promise<AnalyzeResponse> {
-  const response = await fetch(`${API_BASE_URL}/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
-  });
+  let response: Response;
+  try {
+    const apiBaseUrl = getApiBaseUrl();
+    response = await fetch(`${apiBaseUrl}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+  } catch {
+    throw new Error(
+      "Unable to reach the ConsensusIQ API. Confirm the backend is deployed and NEXT_PUBLIC_API_BASE_URL is set.",
+    );
+  }
 
   if (!response.ok) {
-    throw new Error(`Analysis failed with status ${response.status}`);
+    let message = "Analysis failed. Please check that the backend API is running.";
+    try {
+      const errorBody = await response.json();
+      if (typeof errorBody.detail === "string") {
+        message = errorBody.detail;
+      }
+    } catch {
+      if (response.status >= 500) {
+        message = "The reasoning service is temporarily unavailable.";
+      }
+    }
+    throw new Error(message);
   }
 
   return response.json();

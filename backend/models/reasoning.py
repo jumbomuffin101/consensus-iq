@@ -53,6 +53,13 @@ class ConsensusJudgment(BaseModel):
     reasoning_summary: str
 
 
+class ExecutionMetadata(BaseModel):
+    execution_time_ms: int = 0
+    retrieval_time_ms: int = 0
+    agent_time_ms: int = 0
+    consensus_time_ms: int = 0
+
+
 class ReasoningState(BaseModel):
     question: str
     retrieved_context: list[RetrievedContext] = Field(default_factory=list)
@@ -63,6 +70,7 @@ class ReasoningState(BaseModel):
     confidence_score: float = Field(default=0.0, ge=0, le=1)
     agreement_score: float = Field(default=0.0, ge=0, le=1)
     reasoning_summary: str = ""
+    metadata: ExecutionMetadata = Field(default_factory=ExecutionMetadata)
 
     def upsert_agent_output(self, output: AgentOutput) -> "ReasoningState":
         next_outputs = [
@@ -72,3 +80,7 @@ class ReasoningState(BaseModel):
         ]
         next_outputs.append(output)
         return self.copy(update={"agent_outputs": next_outputs})
+
+    def with_timing(self, field: str, elapsed_ms: int) -> "ReasoningState":
+        metadata = self.metadata.copy(update={field: elapsed_ms})
+        return self.copy(update={"metadata": metadata})
