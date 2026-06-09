@@ -77,6 +77,10 @@ function asPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function asTitleCase(value: string) {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function promptDomainLabel(question: string) {
   const preset = demoPrompts.find((prompt) => prompt.question === question);
   if (preset?.label === "Clinical Reasoning") return "Clinical";
@@ -230,7 +234,7 @@ export function ConsensusWorkbench() {
               evidence-grounded consensus using Microsoft Foundry IQ-style retrieval.
             </p>
           </div>
-          <Badge tone="success" className="w-fit">Judge-ready demo</Badge>
+          <Badge tone="success" className="w-fit">Judge-Ready Demo</Badge>
         </header>
 
         <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
@@ -268,7 +272,7 @@ export function ConsensusWorkbench() {
               <form className="flex flex-col gap-4" onSubmit={onSubmit}>
                 <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
                   <span className="text-sm text-muted-foreground">Prompt type</span>
-                  <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{domainLabel}</Badge>
+                  <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{asTitleCase(domainLabel)}</Badge>
                 </div>
                 <div className="grid gap-2">
                   {demoPrompts.map((prompt) => (
@@ -325,7 +329,7 @@ export function ConsensusWorkbench() {
                   <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
                     <span className="text-sm text-muted-foreground">Scenario</span>
                     <Badge tone={result.scenario_label === "Custom" ? "muted" : "success"}>
-                      {result.scenario_label}
+                      {asTitleCase(result.scenario_label)}
                     </Badge>
                   </div>
                   <p className="text-sm leading-6 text-foreground">{result.consensus}</p>
@@ -406,7 +410,7 @@ export function ConsensusWorkbench() {
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold">{agent.agent}</h3>
                     <Badge tone={agent.stance === "caution" ? "warning" : agent.stance === "support" ? "success" : "muted"}>
-                      {agent.stance}
+                      {asTitleCase(agent.stance)}
                     </Badge>
                   </div>
                   <div className="mb-4 rounded-md border border-border bg-card px-3 py-2">
@@ -447,7 +451,7 @@ export function ConsensusWorkbench() {
                           <h3 className="text-sm font-semibold">{item.topic}</h3>
                         </div>
                         <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
-                          {item.severity}
+                          {asTitleCase(item.severity)}
                         </Badge>
                       </div>
                       <p className="mb-3 text-xs leading-5 text-muted-foreground">
