@@ -90,6 +90,12 @@ export function ConsensusWorkbench() {
           <Badge tone="success" className="w-fit">Judge-ready demo</Badge>
         </header>
 
+        <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
+          ConsensusIQ is a reasoning and decision-support demo. It is not a
+          substitute for professional medical, legal, financial, or security
+          advice.
+        </section>
+
         <section className="rounded-lg border border-border bg-card p-4">
           <div className="grid gap-2 md:grid-cols-5">
             {flowSteps.map((step, index) => (

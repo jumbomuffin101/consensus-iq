@@ -1,17 +1,67 @@
 # ConsensusIQ
 
-Evidence-based agent consensus platform for the Microsoft Agents League hackathon.
+**Evidence-grounded multi-agent consensus for high-stakes decisions.**
 
-ConsensusIQ demonstrates a grounded multi-agent reasoning workflow using Foundry IQ-ready retrieval, typed shared state, graph-based agent orchestration, disagreement detection, and transparent consensus scoring. The current MVP is intentionally local-first and uses mock fallbacks when external services are unavailable.
+- **Hackathon:** Microsoft Agents League
+- **Challenge track:** Reasoning Agents
+- **Microsoft IQ layer:** Microsoft Foundry IQ-style citation retrieval
+- **License:** MIT
 
-## Stack
+## Safety Disclaimer
 
-- Frontend: Next.js 15, TypeScript, Tailwind CSS, shadcn-style local UI primitives
-- Backend: Python 3.12, FastAPI, LangGraph-ready agent modules
-- Retrieval: Microsoft Foundry IQ provider abstraction with mock fallback
-- Persistence/auth: none for MVP
+ConsensusIQ is a reasoning and decision-support demo. It is not a substitute for professional medical, legal, financial, or security advice.
 
-## Local Setup
+## Problem Statement
+
+High-stakes decisions often depend on incomplete evidence, competing interpretations, and hidden disagreement. A single AI answer can sound confident while missing risks, alternatives, or source gaps. Teams need a transparent way to compare reasoning perspectives, detect disagreement, and produce a grounded recommendation with visible confidence.
+
+## Solution Overview
+
+ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Foundry IQ integrations both have mock fallback providers.
+
+## Architecture
+
+```text
+User Question
+  -> Foundry IQ Retrieval Provider
+     -> citation-ready sources
+  -> Planner Agent
+     -> structured reasoning tasks
+  -> Specialist Agents in Parallel
+     -> Risk Analyst
+     -> Evidence Analyst
+     -> Alternatives Analyst
+  -> Disagreement Detection
+     -> conflicting recommendations
+     -> confidence gaps
+     -> missing evidence
+  -> Consensus Judge
+     -> final recommendation
+     -> confidence score
+     -> agreement score
+     -> reasoning summary
+```
+
+## Key Features
+
+- Multi-agent reasoning with planner, risk, evidence, alternatives, and consensus judge roles.
+- Microsoft Foundry IQ-style retrieval abstraction with citation IDs and source snippets.
+- Azure OpenAI-ready LLM provider with retries, timeouts, and mock fallback.
+- Parallel specialist agent execution.
+- Structured disagreement detection.
+- Confidence and agreement scoring.
+- Stable `POST /analyze` API contract.
+- Local demo reliability without secrets or external services.
+
+## Tech Stack
+
+- **Frontend:** Next.js 15, TypeScript, Tailwind CSS, shadcn-style local UI primitives
+- **Backend:** Python 3.12, FastAPI, Pydantic
+- **Reasoning:** LangGraph-ready graph orchestration with deterministic local fallback
+- **LLM:** Azure OpenAI provider abstraction with mock fallback
+- **Retrieval:** Foundry IQ provider abstraction with mock fallback
+
+## Setup Instructions
 
 ### Backend
 
@@ -24,20 +74,16 @@ copy .env.example .env
 uvicorn main:app --reload --port 8000
 ```
 
-If your Python distribution creates a Unix-style venv on Windows, use `.venv\bin\Activate.ps1` instead.
+If your Python distribution creates a Unix-style venv on Windows, use `.venv\bin\Activate.ps1`.
 
-LangGraph is listed in `backend/requirements-agents.txt`. The graph runner uses LangGraph when installed and falls back to a deterministic local graph runner when native package wheels are unavailable. OpenAI/Azure SDK integration starts from `backend/requirements-azure.txt`.
-
-### Azure OpenAI
-
-The backend uses a provider factory. If all Azure variables are present and the optional SDK is installed, agents use Azure OpenAI. If Azure is missing, times out, returns invalid JSON, or the SDK is unavailable, ConsensusIQ falls back to the mock provider and keeps the API response stable.
+Optional Azure OpenAI support:
 
 ```bash
 cd backend
 pip install -r requirements-azure.txt
 ```
 
-Set these in `backend/.env`:
+Set in `backend/.env`:
 
 ```bash
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
@@ -46,11 +92,7 @@ AZURE_OPENAI_DEPLOYMENT=your-deployment-name
 AZURE_OPENAI_API_VERSION=2024-10-21
 ```
 
-### Foundry IQ Retrieval
-
-Foundry IQ is the grounding layer. It retrieves citation-ready context before agents reason, so specialist outputs can cite `citation_id` values instead of relying only on model memory. This reduces hallucination risk by making evidence visible, auditable, and available in the API response.
-
-Set these in `backend/.env` to enable Foundry IQ retrieval:
+Optional Foundry IQ retrieval:
 
 ```bash
 FOUNDRY_IQ_ENDPOINT=https://your-foundry-iq-endpoint
@@ -59,9 +101,7 @@ FOUNDRY_IQ_INDEX_NAME=your-index-name
 FOUNDRY_IQ_API_VERSION=2024-05-01-preview
 ```
 
-If any value is missing or Foundry IQ is unavailable, the backend uses mock retrieval and still returns clearly marked mock sources.
-
-The API runs at `http://localhost:8000`.
+If Azure OpenAI or Foundry IQ is unavailable, ConsensusIQ falls back to mock providers and still returns a complete report.
 
 ### Frontend
 
@@ -72,7 +112,36 @@ copy .env.example .env.local
 npm run dev
 ```
 
-The app runs at `http://localhost:3000`.
+Open `http://localhost:3000`.
+
+## Demo Script
+
+### 60-second explanation
+
+ConsensusIQ is an evidence-grounded consensus platform. A user asks a decision question, Foundry IQ-style retrieval returns citation-ready sources, and multiple specialist agents reason independently: risk, evidence, and alternatives. ConsensusIQ compares their conclusions, detects disagreement, and produces a final recommendation with confidence and agreement scores.
+
+### Recommended demo prompt
+
+```text
+Should a 63-year-old patient with new-onset focal seizure receive MRI before lumbar puncture?
+```
+
+### What judges should notice
+
+- The agents do not simply agree by default; they expose risk, evidence, alternatives, and disagreement.
+- Claims are tied to visible source citation IDs.
+- The final answer includes confidence and agreement scores.
+- Foundry IQ is represented as the grounding layer that reduces hallucination by forcing evidence-backed claims through citation-ready retrieved context.
+- The demo remains reliable locally because Azure OpenAI and Foundry IQ both have fallback providers.
+
+## Screenshots
+
+Add final screenshots before submission:
+
+- Main interface: `docs/screenshots/main-interface.png`
+- Consensus report: `docs/screenshots/consensus-report.png`
+- Agent disagreement view: `docs/screenshots/agent-disagreement-view.png`
+- Sources section: `docs/screenshots/sources-section.png`
 
 ## API
 
@@ -107,24 +176,29 @@ Returns:
 }
 ```
 
-## Demo Script
+## Safety and Reliability
 
-### 60-second explanation
+- Public disclaimer is shown in the app and README.
+- No secrets are committed; credentials belong only in local `.env` files.
+- Azure OpenAI failures fall back to deterministic mock reasoning.
+- Foundry IQ failures fall back to clearly marked mock sources.
+- Source citations are visible so judges can inspect grounding.
+- No authentication or database is required for the local demo.
 
-ConsensusIQ is an evidence-grounded consensus platform. A user asks a decision question, Foundry IQ-style retrieval returns citation-ready sources, and multiple specialist agents reason independently: risk, evidence, and alternatives. ConsensusIQ then compares their conclusions, detects disagreement, and produces a final recommendation with confidence and agreement scores.
+## Final Validation Notes
 
-### Recommended demo prompt
+- Frontend production build passed with `npm run build`.
+- Backend `/analyze` was smoke tested through FastAPI.
+- Azure credentials are not committed.
+- Mock fallback allows a reliable demo even without Azure OpenAI or Foundry IQ credentials.
 
-```text
-Should a 63-year-old patient with new-onset focal seizure receive MRI before lumbar puncture?
-```
+## Future Roadmap
 
-### What judges should notice
-
-- The agents do not simply agree by default; they expose risk, evidence, alternatives, and disagreement.
-- Claims are tied back to visible source citation IDs.
-- The final answer includes both confidence and agreement, making uncertainty explicit.
-- The demo remains reliable locally because Azure OpenAI and Foundry IQ both have mock fallback providers.
+- Connect to a live Foundry IQ project and tune response normalization.
+- Use Azure OpenAI deployments for all agent roles in production mode.
+- Add streaming graph updates for live agent progress.
+- Add more specialist agents for domain-specific review.
+- Add exportable consensus reports for judges, reviewers, or decision teams.
 
 ## Project Structure
 
@@ -135,4 +209,4 @@ consensus-iq/
   docs/
 ```
 
-See `docs/architecture.md` for the agent flow and extension points.
+See `docs/architecture.md` for deeper architecture notes.
