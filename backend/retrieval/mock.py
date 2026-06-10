@@ -19,7 +19,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     citation_id=f"S{index}",
                     title=row["title"],
                     source="Foundry IQ Retrieval Layer \u2014 Demo Corpus",
-                    url=f"mock://foundry-iq/{domain}/{index}",
+                    url=f"consensus-iq://evidence/{domain}/{index}",
                     snippet=f"Demo corpus source: {row['snippet']}",
                     relevance_score=row["score"],
                 )

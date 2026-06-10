@@ -196,13 +196,27 @@ function getConsensusJudgeSummary(result: AnalyzeResponse) {
   return `Final recommendation balances ${asPercent(result.confidence_score)} confidence, ${asPercent(result.agreement_score)} agreement, and the key disagreement: ${disagreement}`;
 }
 
+function getPlannerSummary(result: AnalyzeResponse) {
+  return `${result.scenario_label} scenario detected; the question was routed through grounded retrieval, risk review, evidence review, alternatives analysis, and consensus judging.`;
+}
+
+function getConfidenceInterpretation(result: AnalyzeResponse) {
+  if (result.confidence_score >= 0.75) {
+    return "High confidence: retrieved evidence and agent agreement strongly support the recommendation.";
+  }
+  if (result.confidence_score >= 0.5) {
+    return "Moderate confidence: the recommendation is supported, but disagreement or missing facts require caution.";
+  }
+  return "Low confidence: unresolved evidence gaps, high-risk context, or adversarial wording materially limit certainty.";
+}
+
 function getTopRelevance(result: AnalyzeResponse) {
   if (!result.sources.length) return 0;
   return Math.max(...result.sources.map((source) => source.relevance_score));
 }
 
 function sourceDisplayName(source: string) {
-  if (source === "Mock Foundry IQ Knowledge Base") {
+  if (source === "Mock Foundry IQ Knowledge Base" || source.includes("Demo Corpus")) {
     return "Foundry IQ Retrieval Layer \u2014 Demo Corpus";
   }
   return source;
@@ -210,6 +224,26 @@ function sourceDisplayName(source: string) {
 
 function sourceDisplaySnippet(snippet: string) {
   return snippet.replace(/^Mock Foundry IQ source:/, "Demo corpus source:");
+}
+
+function sourceDisplayIdentifier(source: AnalyzeResponse["sources"][number]) {
+  if (source.url.startsWith("mock://foundry-iq/")) {
+    return source.url.replace("mock://foundry-iq/", "consensus-iq://evidence/");
+  }
+  return source.url || source.id || source.citation_id;
+}
+
+function sourceType(source: AnalyzeResponse["sources"][number]) {
+  return sourceDisplayName(source.source).includes("Demo Corpus")
+    ? "Curated demo corpus"
+    : "Live retrieval result";
+}
+
+function agentsUsingSource(result: AnalyzeResponse, citationId: string) {
+  return result.agent_outputs
+    .filter((agent) => agent.evidence_refs.includes(citationId))
+    .map((agent) => agent.agent.replace(" Agent", ""))
+    .join(", ");
 }
 
 function disagreementWhyItMatters(kind: AnalyzeResponse["disagreements"][number]["kind"]) {
@@ -389,7 +423,10 @@ export function ConsensusWorkbench() {
                       value={getRationaleSummary(result)}
                     />
                     <div className="rounded-lg border border-border bg-background p-4">
-                      <h3 className="mb-3 text-sm font-semibold">Confidence</h3>
+                      <h3 className="mb-2 text-sm font-semibold">Confidence Interpretation</h3>
+                      <p className="mb-3 text-sm leading-6 text-muted-foreground">
+                        {getConfidenceInterpretation(result)}
+                      </p>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
                         <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
@@ -439,7 +476,7 @@ export function ConsensusWorkbench() {
                     />
                     <div className="space-y-3">
                       {result.sources.map((source) => (
-                        <EvidenceCard key={source.citation_id} source={source} />
+                        <EvidenceCard key={source.citation_id} source={source} result={result} />
                       ))}
                     </div>
                   </div>
@@ -571,6 +608,11 @@ function ReasoningBreakdown({ result }: { result: AnalyzeResponse }) {
       <h3 className="mb-3 text-sm font-semibold">How Consensus Was Reached</h3>
       <div className="space-y-3">
         <ReasoningStep
+          label="Planner"
+          value={getPlannerSummary(result)}
+          refs={result.sources.map((source) => source.citation_id)}
+        />
+        <ReasoningStep
           label="Risk Analyst"
           value={risk?.conclusion ?? "No risk analyst output returned."}
           refs={risk?.evidence_refs}
@@ -653,7 +695,16 @@ function TraceMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EvidenceCard({ source }: { source: AnalyzeResponse["sources"][number] }) {
+function EvidenceCard({
+  source,
+  result,
+}: {
+  source: AnalyzeResponse["sources"][number];
+  result: AnalyzeResponse;
+}) {
+  const usedBy = agentsUsingSource(result, source.citation_id);
+  const displayIdentifier = sourceDisplayIdentifier(source);
+
   return (
     <article className="rounded-lg border border-border bg-background p-3">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -665,19 +716,26 @@ function EvidenceCard({ source }: { source: AnalyzeResponse["sources"][number] }
       </div>
       <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
         <div>
-          <span className="text-muted-foreground">Relevance score </span>
-          <span className="font-mono text-primary">{asPercent(source.relevance_score)}</span>
-        </div>
-        <div>
           <span className="text-muted-foreground">Citation ID </span>
           <span className="font-mono text-primary">{source.citation_id}</span>
         </div>
+        <div>
+          <span className="text-muted-foreground">Source type </span>
+          <span className="text-foreground">{sourceType(source)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Relevance </span>
+          <span className="font-mono text-primary">{asPercent(source.relevance_score)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Used by agents </span>
+          <span className="text-foreground">{usedBy || "Referenced in consensus context"}</span>
+        </div>
       </div>
+      <div className="mb-2 text-[11px] uppercase text-muted-foreground">Evidence excerpt</div>
       <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
-      {source.url ? (
-        <a className="mt-2 block text-xs text-primary hover:underline" href={source.url}>
-          {source.url}
-        </a>
+      {displayIdentifier ? (
+        <div className="mt-2 break-all font-mono text-xs text-primary">{displayIdentifier}</div>
       ) : null}
     </article>
   );
