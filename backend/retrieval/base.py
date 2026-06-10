@@ -7,12 +7,36 @@ class RetrievalProviderError(RuntimeError):
     """Raised when a retrieval provider cannot return usable context."""
 
 
-class BaseRetrievalProvider(ABC):
+class RetrievalAdapter(ABC):
+    """Strict adapter contract for live Foundry IQ and fallback retrieval.
+
+    All retrieval implementations must return normalized RetrievedContext
+    records so agents and API routes never depend on provider-specific fields.
+    """
+
     name: str
 
     @abstractmethod
     def retrieve(self, question: str) -> list[RetrievedContext]:
         raise NotImplementedError
+
+    def normalize(self, contexts: list[RetrievedContext]) -> list[RetrievedContext]:
+        normalized: list[RetrievedContext] = []
+        for index, context in enumerate(contexts, start=1):
+            citation_id = context.citation_id or f"S{index}"
+            normalized.append(
+                context.copy(
+                    update={
+                        "id": context.id or citation_id,
+                        "citation_id": citation_id,
+                    }
+                )
+            )
+        return normalized
+
+
+class BaseRetrievalProvider(RetrievalAdapter):
+    """Backward-compatible provider name for existing graph wiring."""
 
 
 class ResilientRetrievalProvider(BaseRetrievalProvider):

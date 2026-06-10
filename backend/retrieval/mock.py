@@ -12,17 +12,20 @@ class MockRetrievalProvider(BaseRetrievalProvider):
         domain = classify_domain(question)
         normalized = question.lower()
         source_rows = self._source_rows(domain, normalized)
-        return [
-            RetrievedContext(
-                citation_id=f"S{index}",
-                title=row["title"],
-                source="Foundry IQ Retrieval Layer — Demo Corpus",
-                url=f"mock://foundry-iq/{domain}/{index}",
-                snippet=f"Demo corpus source: {row['snippet']}",
-                relevance_score=row["score"],
-            )
-            for index, row in enumerate(source_rows, start=1)
-        ]
+        return self.normalize(
+            [
+                RetrievedContext(
+                    id=f"demo-{domain}-{index}",
+                    citation_id=f"S{index}",
+                    title=row["title"],
+                    source="Foundry IQ Retrieval Layer \u2014 Demo Corpus",
+                    url=f"mock://foundry-iq/{domain}/{index}",
+                    snippet=f"Demo corpus source: {row['snippet']}",
+                    relevance_score=row["score"],
+                )
+                for index, row in enumerate(source_rows, start=1)
+            ]
+        )
 
     def _source_rows(self, domain: str, question: str) -> list[dict[str, str | float]]:
         if domain == "clinical" and any(

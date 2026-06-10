@@ -40,7 +40,7 @@ class FoundryIQRetrievalProvider(BaseRetrievalProvider):
     def retrieve(self, question: str) -> list[RetrievedContext]:
         request = self._build_http_request(self.build_request_payload(question))
         body = self._send(request)
-        contexts = self.parse_response(self._decode_json(body))
+        contexts = self.normalize(self.parse_response(self._decode_json(body)))
         if not contexts:
             raise RetrievalProviderError("Foundry IQ returned no usable context.")
         return contexts
@@ -112,6 +112,9 @@ class FoundryIQRetrievalProvider(BaseRetrievalProvider):
         contexts: list[RetrievedContext] = []
         for index, item in enumerate(items[: self.top_k], start=1):
             title = self._first_text(item, "title", "name", "document_title")
+            document_id = self._first_text(
+                item, "id", "key", "document_id", "chunk_id", "source_id"
+            )
             snippet = self._first_text(
                 item, "snippet", "content", "text", "chunk", "summary", "caption"
             )
@@ -126,6 +129,7 @@ class FoundryIQRetrievalProvider(BaseRetrievalProvider):
 
             contexts.append(
                 RetrievedContext(
+                    id=document_id or f"S{index}",
                     citation_id=f"S{index}",
                     title=title or f"Foundry IQ result {index}",
                     source=source or "Microsoft Foundry IQ",

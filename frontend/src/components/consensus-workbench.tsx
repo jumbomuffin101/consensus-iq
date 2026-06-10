@@ -155,6 +155,52 @@ function getDisplayedTiming(metadata: AnalyzeResponse["metadata"]) {
   };
 }
 
+function getAgent(result: AnalyzeResponse, name: string) {
+  return result.agent_outputs.find((agent) => agent.agent === name);
+}
+
+function firstSentence(value: string) {
+  const match = value.match(/.+?[.!?](?:\s|$)/);
+  return (match?.[0] ?? value).trim();
+}
+
+function getRecommendationSummary(result: AnalyzeResponse) {
+  const [opening] = result.consensus.split("Evidence view:");
+  return opening.replace(/^[^:]+:\s*/, "").trim();
+}
+
+function getRationaleSummary(result: AnalyzeResponse) {
+  const evidence = getAgent(result, "Evidence Analyst Agent");
+  const risk = getAgent(result, "Risk Analyst Agent");
+  if (evidence && risk) {
+    return `${firstSentence(evidence.conclusion)} ${firstSentence(risk.conclusion)}`;
+  }
+  return firstSentence(result.reasoning_summary || result.consensus);
+}
+
+function getKeyDisagreementSummary(result: AnalyzeResponse) {
+  const keyDisagreement =
+    result.disagreements.find((item) => item.severity === "high") ??
+    result.disagreements.find((item) => item.severity === "medium") ??
+    result.disagreements[0];
+
+  if (!keyDisagreement) {
+    return "No material disagreement detected; remaining limitations are reflected in agent confidence and missing evidence.";
+  }
+
+  return `${keyDisagreement.topic}: ${keyDisagreement.suggested_resolution}`;
+}
+
+function getConsensusJudgeSummary(result: AnalyzeResponse) {
+  const disagreement = getKeyDisagreementSummary(result);
+  return `Final recommendation balances ${asPercent(result.confidence_score)} confidence, ${asPercent(result.agreement_score)} agreement, and the key disagreement: ${disagreement}`;
+}
+
+function getTopRelevance(result: AnalyzeResponse) {
+  if (!result.sources.length) return 0;
+  return Math.max(...result.sources.map((source) => source.relevance_score));
+}
+
 function sourceDisplayName(source: string) {
   if (source === "Mock Foundry IQ Knowledge Base") {
     return "Foundry IQ Retrieval Layer \u2014 Demo Corpus";
@@ -332,11 +378,29 @@ export function ConsensusWorkbench() {
                       {asTitleCase(result.scenario_label)}
                     </Badge>
                   </div>
-                  <p className="text-sm leading-6 text-foreground">{result.consensus}</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
-                    <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
+
+                  <div className="grid gap-3">
+                    <ConsensusSection
+                      title="Recommendation"
+                      value={getRecommendationSummary(result)}
+                    />
+                    <ConsensusSection
+                      title="Rationale"
+                      value={getRationaleSummary(result)}
+                    />
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <h3 className="mb-3 text-sm font-semibold">Confidence</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
+                        <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
+                      </div>
+                    </div>
+                    <ConsensusSection
+                      title="Key Disagreement"
+                      value={getKeyDisagreementSummary(result)}
+                    />
                   </div>
+
                   <div className="rounded-lg border border-border bg-background p-4">
                     <h3 className="mb-3 text-sm font-semibold">Confidence Factors</h3>
                     <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
@@ -359,32 +423,23 @@ export function ConsensusWorkbench() {
                       </div>
                     </div>
                   ) : null}
-                  <div className="rounded-lg border border-border bg-background p-4">
-                    <h3 className="mb-2 text-sm font-semibold">Reasoning Summary</h3>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      {result.reasoning_summary}
-                    </p>
-                  </div>
+
+                  <ReasoningBreakdown result={result} />
+
                   <div className="space-y-3">
-                    <h3 className="text-sm font-semibold">Sources</h3>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold">Retrieved Evidence</h3>
+                      <Badge tone="muted">Foundry IQ Retrieval</Badge>
+                    </div>
+                    <RetrievalTrace
+                      query={analyzedQuestion}
+                      documentCount={result.sources.length}
+                      topRelevance={getTopRelevance(result)}
+                      retrievalLatency={displayedTiming?.retrieval}
+                    />
                     <div className="space-y-3">
                       {result.sources.map((source) => (
-                        <div key={source.citation_id} className="rounded-lg border border-border bg-background p-3">
-                          <div className="mb-1 flex items-center justify-between gap-3">
-                            <span className="font-mono text-xs text-primary">{source.citation_id}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {asPercent(source.relevance_score)}
-                            </span>
-                          </div>
-                          <div className="text-sm font-medium">{source.title}</div>
-                          <div className="text-xs text-muted-foreground">{sourceDisplayName(source.source)}</div>
-                          <p className="mt-2 text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
-                          {source.url ? (
-                            <a className="mt-2 block text-xs text-primary hover:underline" href={source.url}>
-                              {source.url}
-                            </a>
-                          ) : null}
-                        </div>
+                        <EvidenceCard key={source.citation_id} source={source} />
                       ))}
                     </div>
                   </div>
@@ -494,6 +549,137 @@ function Metric({ label, value }: { label: string; value: string }) {
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div className="mt-2 font-mono text-3xl font-semibold">{value}</div>
     </div>
+  );
+}
+
+function ConsensusSection({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      <p className="text-sm leading-6 text-muted-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ReasoningBreakdown({ result }: { result: AnalyzeResponse }) {
+  const risk = getAgent(result, "Risk Analyst Agent");
+  const evidence = getAgent(result, "Evidence Analyst Agent");
+  const alternatives = getAgent(result, "Alternative Solutions Agent");
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <h3 className="mb-3 text-sm font-semibold">How Consensus Was Reached</h3>
+      <div className="space-y-3">
+        <ReasoningStep
+          label="Risk Analyst"
+          value={risk?.conclusion ?? "No risk analyst output returned."}
+          refs={risk?.evidence_refs}
+        />
+        <ReasoningStep
+          label="Evidence Analyst"
+          value={evidence?.conclusion ?? "No evidence analyst output returned."}
+          refs={evidence?.evidence_refs}
+        />
+        <ReasoningStep
+          label="Alternative Solutions Analyst"
+          value={alternatives?.conclusion ?? "No alternatives analyst output returned."}
+          refs={alternatives?.evidence_refs}
+        />
+        <ReasoningStep
+          label="Consensus Judge"
+          value={getConsensusJudgeSummary(result)}
+          refs={result.sources.map((source) => source.citation_id)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReasoningStep({
+  label,
+  value,
+  refs = [],
+}: {
+  label: string;
+  value: string;
+  refs?: string[];
+}) {
+  return (
+    <div className="rounded-md border border-border bg-card p-3">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
+        {refs.length ? (
+          <span className="font-mono text-xs text-primary">{refs.join(", ")}</span>
+        ) : null}
+      </div>
+      <p className="text-sm leading-6 text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function RetrievalTrace({
+  query,
+  documentCount,
+  topRelevance,
+  retrievalLatency,
+}: {
+  query: string;
+  documentCount: number;
+  topRelevance: number;
+  retrievalLatency?: number;
+}) {
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold">Retrieval Trace</h4>
+        <Badge tone="success">Foundry IQ Grounding</Badge>
+      </div>
+      <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-4">
+        <TraceMetric label="Query" value={query} />
+        <TraceMetric label="Retrieved Documents" value={String(documentCount)} />
+        <TraceMetric label="Top Relevance" value={asPercent(topRelevance)} />
+        <TraceMetric label="Retrieval Latency" value={retrievalLatency ? `${retrievalLatency}ms` : "Not reported"} />
+      </div>
+    </div>
+  );
+}
+
+function TraceMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2">
+      <div className="mb-1 text-[11px] uppercase text-muted-foreground">{label}</div>
+      <div className="break-words text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function EvidenceCard({ source }: { source: AnalyzeResponse["sources"][number] }) {
+  return (
+    <article className="rounded-lg border border-border bg-background p-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium">{source.title}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{sourceDisplayName(source.source)}</div>
+        </div>
+        <Badge tone="muted">{source.citation_id}</Badge>
+      </div>
+      <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+        <div>
+          <span className="text-muted-foreground">Relevance score </span>
+          <span className="font-mono text-primary">{asPercent(source.relevance_score)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Citation ID </span>
+          <span className="font-mono text-primary">{source.citation_id}</span>
+        </div>
+      </div>
+      <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
+      {source.url ? (
+        <a className="mt-2 block text-xs text-primary hover:underline" href={source.url}>
+          {source.url}
+        </a>
+      ) : null}
+    </article>
   );
 }
 

@@ -23,12 +23,14 @@ export type Disagreement = {
 };
 
 export type Source = {
+  id?: string;
   citation_id: string;
   title: string;
   source: string;
   url: string;
   snippet: string;
   relevance_score: number;
+  retrieved_at?: string;
 };
 
 export type AnalyzeResponse = {

@@ -1,6 +1,7 @@
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, root_validator
 
 AgentStance = Literal["support", "caution", "alternative", "synthesis"]
 DisagreementKind = Literal[
@@ -10,12 +11,20 @@ Severity = Literal["low", "medium", "high"]
 
 
 class RetrievedContext(BaseModel):
+    id: str = ""
     title: str
     source: str
     snippet: str
     url: str = ""
     relevance_score: float = Field(..., ge=0, le=1)
     citation_id: str
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @root_validator
+    def default_id_from_citation(cls, values: dict) -> dict:
+        if not values.get("id"):
+            values["id"] = values.get("citation_id", "")
+        return values
 
 
 class ReasoningTask(BaseModel):
