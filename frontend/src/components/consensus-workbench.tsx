@@ -194,23 +194,38 @@ function getAgent(result: AnalyzeResponse, name: string) {
   return result.agent_outputs.find((agent) => agent.agent === name);
 }
 
-function firstSentence(value: string) {
-  const match = value.match(/.+?[.!?](?:\s|$)/);
-  return (match?.[0] ?? value).trim();
-}
-
 function getRecommendationSummary(result: AnalyzeResponse) {
   const [opening] = result.consensus.split("Evidence view:");
   return opening.replace(/^[^:]+:\s*/, "").trim();
 }
 
-function getRationaleSummary(result: AnalyzeResponse) {
+function firstSentence(value: string) {
+  const match = value.match(/.+?[.!?](?:\s|$)/);
+  return (match?.[0] ?? value).trim();
+}
+
+function getRecommendedApproach(result: AnalyzeResponse) {
   const evidence = getAgent(result, "Evidence Analyst Agent");
+  const alternatives = getAgent(result, "Alternative Solutions Agent");
+  const recommendation = evidence?.recommendation || alternatives?.recommendation;
+  return recommendation || "Use the consensus recommendation with explicit evidence checks and review points.";
+}
+
+function getAvoidWatchOut(result: AnalyzeResponse) {
   const risk = getAgent(result, "Risk Analyst Agent");
-  if (evidence && risk) {
-    return `${firstSentence(evidence.conclusion)} ${firstSentence(risk.conclusion)}`;
+  const missingEvidence = result.agent_outputs.flatMap((agent) => agent.missing_evidence);
+  const disagreement = result.disagreements[0]?.topic;
+
+  if (missingEvidence.length) {
+    return `Missing evidence: ${missingEvidence.slice(0, 2).join("; ")}.`;
   }
-  return firstSentence(result.reasoning_summary || result.consensus);
+  if (disagreement) {
+    return `Do not ignore unresolved disagreement around ${disagreement}.`;
+  }
+  if (risk?.conclusion) {
+    return firstSentence(risk.conclusion);
+  }
+  return "Avoid overconfidence; verify local constraints, policy context, and any domain-specific facts before acting.";
 }
 
 function getKeyDisagreementSummary(result: AnalyzeResponse) {
@@ -250,6 +265,40 @@ function getTopRelevance(result: AnalyzeResponse) {
   return Math.max(...result.sources.map((source) => source.relevance_score));
 }
 
+function getAverageRelevance(result: AnalyzeResponse) {
+  if (!result.sources.length) return 0;
+  return result.sources.reduce((total, source) => total + source.relevance_score, 0) / result.sources.length;
+}
+
+function getUsedSourceRefs(result: AnalyzeResponse) {
+  const refs = new Set<string>();
+  result.agent_outputs.forEach((agent) => {
+    agent.evidence_refs.forEach((ref) => refs.add(ref));
+  });
+  return Array.from(refs);
+}
+
+function getConfidenceLimiters(result: AnalyzeResponse, question: string) {
+  const missingEvidence = result.agent_outputs.flatMap((agent) => agent.missing_evidence);
+  const highRiskDomain = ["Clinical", "Cybersecurity", "Finance"].includes(result.scenario_label);
+  const hasPromptInjection = /ignore .*instructions|100% certain|100% confidence|no uncertainty/i.test(question);
+  const averageRelevance = getAverageRelevance(result);
+
+  const limiters = [
+    result.disagreements.length ? "Agent disagreement remains unresolved" : null,
+    missingEvidence.length ? "Evidence gaps require additional grounding" : null,
+    highRiskDomain ? "High-risk domain requires conservative confidence" : null,
+    averageRelevance < 0.85 ? "Retrieved sources are relevant but not definitive" : null,
+    hasPromptInjection ? "Adversarial certainty request reduced confidence" : null,
+  ].filter(Boolean) as string[];
+
+  if (!limiters.length) {
+    limiters.push("Local policy, patient-specific facts, or implementation details may still affect the decision");
+  }
+
+  return limiters.slice(0, 4);
+}
+
 function sourceDisplayName(source: string) {
   if (
     source === "Mock Foundry IQ Knowledge Base" ||
@@ -280,6 +329,35 @@ function agentsUsingSource(result: AnalyzeResponse, citationId: string) {
     .join(", ");
 }
 
+function CitationChips({ refs = [], linked = true }: { refs?: string[]; linked?: boolean }) {
+  if (!refs.length) {
+    return <span className="text-xs text-muted-foreground">No citation</span>;
+  }
+
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {refs.map((ref) =>
+        linked ? (
+          <a
+            key={ref}
+            href={`#evidence-${ref}`}
+            className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary underline-offset-4 hover:underline"
+          >
+            {ref}
+          </a>
+        ) : (
+          <span
+            key={ref}
+            className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
+          >
+            {ref}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
+
 function disagreementWhyItMatters(kind: AnalyzeResponse["disagreements"][number]["kind"]) {
   if (kind === "conflicting_recommendation") {
     return "Agents are pointing toward different decision paths, so the judge must preserve conditions and boundaries.";
@@ -291,6 +369,20 @@ function disagreementWhyItMatters(kind: AnalyzeResponse["disagreements"][number]
 }
 
 function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
+  const [openAgents, setOpenAgents] = useState<string[]>([]);
+
+  useEffect(() => {
+    setOpenAgents(result ? ["Risk Analyst Agent"] : []);
+  }, [result]);
+
+  function toggleAgent(agentName: string) {
+    setOpenAgents((current) =>
+      current.includes(agentName)
+        ? current.filter((name) => name !== agentName)
+        : [...current, agentName],
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -301,51 +393,98 @@ function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
       </CardHeader>
       <CardContent className="grid gap-4">
         {result?.agent_outputs.map((agent) => (
-          <article key={agent.agent} className="rounded-lg border border-border bg-background p-3">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold">{agent.agent}</h3>
-                <div className="mt-1 text-xs uppercase text-muted-foreground">Agent confidence</div>
-                <div className="font-mono text-xl font-semibold text-foreground">
-                  {asPercent(agent.confidence_score)}
-                </div>
-              </div>
-              <Badge tone={agent.stance === "caution" ? "warning" : agent.stance === "support" ? "success" : "muted"}>
-                {asTitleCase(agent.stance)}
-              </Badge>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
-                  Key Finding
-                </div>
-                <p
-                  className="overflow-hidden text-sm leading-6 text-foreground"
-                  style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" }}
-                >
-                  {agent.conclusion}
-                </p>
-              </div>
-              <div>
-                <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
-                  Recommendation
-                </div>
-                <p
-                  className="overflow-hidden text-xs leading-5 text-muted-foreground"
-                  style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
-                >
-                  {agent.recommendation}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span>Sources</span>
-              <span>{agent.evidence_refs.length ? agent.evidence_refs.join(", ") : "No citation"}</span>
-            </div>
-          </article>
+          <AgentAccordionCard
+            key={agent.agent}
+            agent={agent}
+            isOpen={openAgents.includes(agent.agent)}
+            onToggle={() => toggleAgent(agent.agent)}
+          />
         )) ?? <PlaceholderRows />}
       </CardContent>
     </Card>
+  );
+}
+
+function AgentAccordionCard({
+  agent,
+  isOpen,
+  onToggle,
+}: {
+  agent: AnalyzeResponse["agent_outputs"][number];
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const longerReasoning = [...agent.rationale, ...agent.limitations]
+    .filter((item) => !/^Fallback/i.test(item))
+    .slice(0, 3);
+
+  return (
+    <article className="rounded-lg border border-border bg-background">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full p-3 text-left"
+        aria-expanded={isOpen}
+      >
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{agent.agent}</h3>
+            <p
+              className="mt-1 overflow-hidden text-xs leading-5 text-muted-foreground"
+              style={{ display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}
+            >
+              {agent.conclusion}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={agent.stance === "caution" ? "warning" : agent.stance === "support" ? "success" : "muted"}>
+              {asTitleCase(agent.stance)}
+            </Badge>
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>
+            Agent confidence <span className="font-mono text-primary">{asPercent(agent.confidence_score)}</span>
+          </span>
+          <span className="flex flex-wrap items-center gap-1">
+            Sources <CitationChips refs={agent.evidence_refs} linked={false} />
+          </span>
+        </div>
+      </button>
+
+      {isOpen ? (
+        <div className="space-y-3 border-t border-border p-3 pt-4">
+          <AgentDetail label="Key Finding" value={agent.conclusion} />
+          <AgentDetail label="Recommendation" value={agent.recommendation} />
+          <div>
+            <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+              Source IDs
+            </div>
+            <CitationChips refs={agent.evidence_refs} />
+          </div>
+          {longerReasoning.length ? (
+            <div>
+              <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                Longer Reasoning
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {longerReasoning.join(" ")}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function AgentDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">{label}</div>
+      <p className="text-sm leading-6 text-foreground">{value}</p>
+    </div>
   );
 }
 
@@ -589,14 +728,7 @@ export function ConsensusWorkbench() {
                   </div>
 
                   <div className="grid gap-3">
-                    <ConsensusSection
-                      title="Recommendation"
-                      value={getRecommendationSummary(result)}
-                    />
-                    <ConsensusSection
-                      title="Rationale"
-                      value={getRationaleSummary(result)}
-                    />
+                    <RecommendationCard result={result} />
                     <div className="rounded-lg border border-border bg-background p-4">
                       <h3 className="mb-2 text-sm font-semibold">Confidence Interpretation</h3>
                       <p className="mb-3 text-sm leading-6 text-muted-foreground">
@@ -625,6 +757,7 @@ export function ConsensusWorkbench() {
                     </ul>
                   </div>
                   <ConfidenceCalculation result={result} question={analyzedQuestion} />
+                  <ConfidenceLimiters result={result} question={analyzedQuestion} />
 
                   <DisagreementsPanel result={result} />
 
@@ -636,9 +769,8 @@ export function ConsensusWorkbench() {
                       <Badge tone="muted">Foundry IQ Retrieval</Badge>
                     </div>
                     <RetrievalTrace
+                      result={result}
                       query={analyzedQuestion}
-                      documentCount={result.sources.length}
-                      topRelevance={getTopRelevance(result)}
                       retrievalLatency={displayedTiming?.retrieval}
                     />
                     <div className="space-y-3">
@@ -689,6 +821,37 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function RecommendationCard({ result }: { result: AnalyzeResponse }) {
+  return (
+    <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
+      <h3 className="mb-3 text-sm font-semibold">Recommendation</h3>
+      <div className="grid gap-3">
+        <RecommendationBlock
+          label="Final Recommendation"
+          value={getRecommendationSummary(result)}
+        />
+        <RecommendationBlock
+          label="Recommended Approach"
+          value={getRecommendedApproach(result)}
+        />
+        <RecommendationBlock
+          label="Avoid / Watch Out For"
+          value={getAvoidWatchOut(result)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function RecommendationBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background p-3">
+      <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">{label}</div>
+      <p className="text-sm leading-6 text-foreground">{value}</p>
+    </div>
+  );
+}
+
 function ConfidenceCalculation({
   result,
   question,
@@ -728,6 +891,28 @@ function ConfidenceCalculation({
           </ul>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ConfidenceLimiters({
+  result,
+  question,
+}: {
+  result: AnalyzeResponse;
+  question: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <h3 className="mb-3 text-sm font-semibold">Why Confidence Is Not Higher</h3>
+      <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
+        {getConfidenceLimiters(result, question).map((limiter) => (
+          <li key={limiter} className="flex gap-2">
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
+            <span>{limiter}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -793,9 +978,7 @@ function ReasoningStep({
     <div className="rounded-md border border-border bg-card p-3">
       <div className="mb-1 flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
-        {refs.length ? (
-          <span className="font-mono text-xs text-primary">{refs.join(", ")}</span>
-        ) : null}
+        {refs.length ? <CitationChips refs={refs} /> : null}
       </div>
       <p className="text-sm leading-6 text-foreground">{value}</p>
     </div>
@@ -803,26 +986,33 @@ function ReasoningStep({
 }
 
 function RetrievalTrace({
+  result,
   query,
-  documentCount,
-  topRelevance,
   retrievalLatency,
 }: {
+  result: AnalyzeResponse;
   query: string;
-  documentCount: number;
-  topRelevance: number;
   retrievalLatency?: number;
 }) {
+  const usedRefs = getUsedSourceRefs(result);
+
   return (
     <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h4 className="text-sm font-semibold">Retrieval Trace</h4>
         <Badge tone="success">Foundry IQ Grounding</Badge>
       </div>
-      <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-4">
+      <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
         <TraceMetric label="Query" value={query} />
-        <TraceMetric label="Retrieved Documents" value={String(documentCount)} />
-        <TraceMetric label="Top Relevance" value={asPercent(topRelevance)} />
+        <TraceMetric label="Retrieved Documents" value={String(result.sources.length)} />
+        <div className="rounded-md border border-border bg-background px-3 py-2">
+          <div className="mb-1 text-[11px] uppercase text-muted-foreground">Sources Used</div>
+          <div className="break-words text-sm text-foreground">
+            <CitationChips refs={usedRefs} />
+          </div>
+        </div>
+        <TraceMetric label="Top Relevance" value={asPercent(getTopRelevance(result))} />
+        <TraceMetric label="Average Relevance" value={asPercent(getAverageRelevance(result))} />
         <TraceMetric label="Retrieval Latency" value={retrievalLatency ? `${retrievalLatency}ms` : "Not reported"} />
       </div>
     </div>
@@ -853,7 +1043,7 @@ function EvidenceCard({
   const isPublicUrl = source.url.startsWith("https://") || source.url.startsWith("http://");
 
   return (
-    <article className="rounded-lg border border-border bg-background">
+    <article id={`evidence-${source.citation_id}`} className="scroll-mt-6 rounded-lg border border-border bg-background">
       <button
         type="button"
         onClick={onToggle}
@@ -917,9 +1107,11 @@ function EvidenceCard({
               >
                 {source.url}
               </a>
-            ) : (
-              <div className="text-xs text-muted-foreground">Public URL unavailable</div>
-            )}
+            ) : source.url ? (
+              <div className="break-all font-mono text-xs text-muted-foreground">
+                {source.url}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
