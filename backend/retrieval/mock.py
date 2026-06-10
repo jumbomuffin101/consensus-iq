@@ -18,9 +18,9 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     id=f"demo-{domain}-{index}",
                     citation_id=f"S{index}",
                     title=row["title"],
-                    source="Foundry IQ Retrieval Layer \u2014 Demo Corpus",
-                    url=f"consensus-iq://evidence/{domain}/{index}",
-                    snippet=f"Demo corpus source: {row['snippet']}",
+                    source="Foundry IQ Retrieval Layer \u2014 Curated Public Corpus",
+                    url=str(row["url"]),
+                    snippet=f"Curated public corpus source: {row['snippet']}",
                     relevance_score=row["score"],
                 )
                 for index, row in enumerate(source_rows, start=1)
@@ -34,6 +34,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "Acute ischemic stroke treatment window",
+                    "url": "https://www.ahajournals.org/doi/10.1161/STR.0000000000000211",
                     "snippet": (
                         "patients within the early onset window require urgent stroke-team "
                         "assessment, non-contrast brain imaging to exclude hemorrhage, and "
@@ -43,6 +44,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Thrombolysis contraindication checklist",
+                    "url": "https://www.ninds.nih.gov/health-information/disorders/stroke",
                     "snippet": (
                         "bleeding risk, anticoagulant exposure, recent surgery, severe "
                         "hypertension, glucose abnormalities, and imaging evidence of "
@@ -52,6 +54,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Time-critical stroke workflow",
+                    "url": "https://www.ninds.nih.gov/health-information/disorders/stroke",
                     "snippet": (
                         "rapid treatment decisions should preserve neurologic benefit while "
                         "avoiding overconfidence when onset time, imaging, or consent details "
@@ -65,6 +68,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "New-onset focal seizure diagnostic priority",
+                    "url": "https://www.ncbi.nlm.nih.gov/books/NBK557553/",
                     "snippet": (
                         "new focal neurologic features increase concern for structural lesions, "
                         "hemorrhage, or mass effect, making intracranial imaging a safety gate "
@@ -74,6 +78,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Lumbar puncture imaging safety criteria",
+                    "url": "https://www.ncbi.nlm.nih.gov/books/NBK557553/",
                     "snippet": (
                         "papilledema, focal deficits, immunocompromise, altered mental status, "
                         "or seizure can trigger imaging before LP to reduce herniation risk."
@@ -82,6 +87,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Parallel emergency treatment considerations",
+                    "url": "https://www.ncbi.nlm.nih.gov/books/NBK557553/",
                     "snippet": (
                         "when infection is plausible, empiric treatment and stabilization may "
                         "run in parallel with imaging rather than waiting passively."
@@ -94,6 +100,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "Customer data exfiltration response",
+                    "url": "https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final",
                     "snippet": (
                         "personal-device copies of customer data should be treated as a security "
                         "incident requiring containment, preservation of evidence, and scope "
@@ -103,6 +110,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Incident response evidence handling",
+                    "url": "https://www.nist.gov/cyberframework",
                     "snippet": (
                         "forensic collection, chain-of-custody controls, device isolation, and "
                         "account access review help determine whether data was accessed, shared, "
@@ -112,6 +120,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Breach notification and compliance review",
+                    "url": "https://www.cisa.gov/resources-tools/resources/federal-government-cybersecurity-incident-and-vulnerability-response-playbooks",
                     "snippet": (
                         "customer, regulator, contractual, and insurer notification duties depend "
                         "on data type, jurisdiction, exposure evidence, and timing thresholds."
@@ -124,6 +133,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "Assessment validity for automated grading",
+                    "url": "https://arxiv.org/abs/2409.13120",
                     "snippet": (
                         "single-rater automated grading can introduce construct-irrelevant bias "
                         "and should be validated against expert scoring before high-stakes use."
@@ -132,6 +142,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "LLM grading reliability checks",
+                    "url": "https://arxiv.org/abs/2508.02442",
                     "snippet": (
                         "prompt sensitivity, rubric drift, inter-rater reliability, and subgroup "
                         "performance should be measured before replacing human graders."
@@ -140,6 +151,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Hybrid evaluation design",
+                    "url": "https://arxiv.org/abs/2603.18765",
                     "snippet": (
                         "LLMs can support draft scoring, feedback generation, or triage when "
                         "paired with calibration sets, human adjudication, and audit sampling."
@@ -152,6 +164,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "Enterprise AI governance controls",
+                    "url": "https://www.nist.gov/itl/ai-risk-management-framework",
                     "snippet": (
                         "organization-wide AI adoption requires approved use cases, data "
                         "classification rules, accountable owners, and monitoring for business "
@@ -161,6 +174,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Workforce and operational impact review",
+                    "url": "https://www.microsoft.com/en-us/ai/responsible-ai",
                     "snippet": (
                         "automation decisions should distinguish productivity augmentation from "
                         "role replacement and evaluate quality, accountability, morale, and "
@@ -170,6 +184,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Confidential information handling policy",
+                    "url": "https://learn.microsoft.com/en-us/purview/data-classification-overview",
                     "snippet": (
                         "public AI tools are unsuitable for restricted information unless vendor "
                         "terms, retention controls, client permissions, and auditability are clear."
@@ -182,6 +197,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "Single-stock concentration risk",
+                    "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/diversification",
                     "snippet": (
                         "putting all savings into one equity exposes the investor to unsystematic "
                         "risk, volatility, and permanent capital loss that diversification is "
@@ -191,6 +207,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Young investor suitability factors",
+                    "url": "https://www.finra.org/investors/investing/investing-basics/asset-allocation-diversification",
                     "snippet": (
                         "age alone does not justify maximum risk; emergency savings, tuition needs, "
                         "debt, time horizon, and risk tolerance determine suitability."
@@ -199,6 +216,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Speculative AI equity risk",
+                    "url": "https://www.investor.gov/introduction-investing/investing-basics/investment-products/stocks",
                     "snippet": (
                         "theme-driven stocks can have valuation, hype-cycle, liquidity, and "
                         "company-specific risks even when the long-term sector outlook is strong."
@@ -210,6 +228,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
         return [
             {
                 "title": "Decision criteria and uncertainty framing",
+                "url": "https://www.nist.gov/itl/ai-risk-management-framework",
                 "snippet": (
                     "custom decision prompts benefit from explicit objectives, stakeholder "
                     "constraints, downside scenarios, and evidence thresholds before a strong "
@@ -219,6 +238,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             },
             {
                 "title": "Comparable option analysis",
+                "url": "https://learn.microsoft.com/en-us/azure/architecture/guide/responsible-innovation/",
                 "snippet": (
                     "reversible, conservative, and high-commitment options should be compared "
                     "using the same success metrics and failure criteria."
@@ -227,6 +247,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             },
             {
                 "title": "Evidence gap register",
+                "url": "https://www.nist.gov/cyberframework",
                 "snippet": (
                     "missing facts should reduce confidence and become explicit conditions for "
                     "the final recommendation instead of being hidden by fluent wording."

@@ -4,8 +4,8 @@
 
 ConsensusIQ is a multi-agent reasoning platform for transparent, evidence-based
 consensus decisions. Retrieval is provider-based for Microsoft Foundry IQ with a
-demo corpus fallback, and agents are provider-based for Azure OpenAI with mock
-fallback.
+curated public corpus fallback, and agents are provider-based for Azure OpenAI
+with mock fallback.
 
 ## Shared State
 
@@ -65,7 +65,7 @@ Retrieval providers live in `backend/retrieval`.
 - `retrieval/base.py`: provider contract, resilient fallback wrapper, and graph node.
 - `retrieval/foundry.py`: Microsoft Foundry IQ HTTP provider, request payload
   builder, API key/index configuration, and response normalization.
-- `retrieval/mock.py`: domain-specific demo corpus sources for reliable demos.
+- `retrieval/mock.py`: domain-specific curated public corpus sources for reliable demos.
 - `retrieval/factory.py`: reads `FOUNDRY_IQ_*` environment variables and chooses
   the provider.
 
@@ -82,9 +82,10 @@ Required Foundry IQ variables:
 - `FOUNDRY_IQ_API_VERSION`
 
 If any value is missing or the provider fails, `MockRetrievalProvider` returns
-clearly marked demo corpus sources so `/analyze` remains reliable. The fallback
-provider classifies prompts as clinical, cybersecurity, research, enterprise,
-finance, or custom so local demos still exercise citation-grounded reasoning.
+clearly marked curated public corpus sources so `/analyze` remains reliable. The
+fallback provider classifies prompts as clinical, cybersecurity, research,
+enterprise, finance, or custom so local demos still exercise citation-grounded
+reasoning with real public links.
 
 ## Node Responsibilities
 

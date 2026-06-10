@@ -216,14 +216,20 @@ function getTopRelevance(result: AnalyzeResponse) {
 }
 
 function sourceDisplayName(source: string) {
-  if (source === "Mock Foundry IQ Knowledge Base" || source.includes("Demo Corpus")) {
-    return "Foundry IQ Retrieval Layer \u2014 Demo Corpus";
+  if (
+    source === "Mock Foundry IQ Knowledge Base" ||
+    source.includes("Demo Corpus") ||
+    source.includes("Curated Public Corpus")
+  ) {
+    return "Foundry IQ Retrieval Layer \u2014 Curated Public Corpus";
   }
   return source;
 }
 
 function sourceDisplaySnippet(snippet: string) {
-  return snippet.replace(/^Mock Foundry IQ source:/, "Demo corpus source:");
+  return snippet
+    .replace(/^Mock Foundry IQ source:/, "Curated public corpus source:")
+    .replace(/^Demo corpus source:/, "Curated public corpus source:");
 }
 
 function sourceDisplayIdentifier(source: AnalyzeResponse["sources"][number]) {
@@ -234,8 +240,8 @@ function sourceDisplayIdentifier(source: AnalyzeResponse["sources"][number]) {
 }
 
 function sourceType(source: AnalyzeResponse["sources"][number]) {
-  return sourceDisplayName(source.source).includes("Demo Corpus")
-    ? "Curated demo corpus"
+  return sourceDisplayName(source.source).includes("Curated Public Corpus")
+    ? "Curated public corpus"
     : "Live retrieval result";
 }
 
@@ -254,6 +260,46 @@ function disagreementWhyItMatters(kind: AnalyzeResponse["disagreements"][number]
     return "Confidence spread shows which specialist view should receive extra scrutiny.";
   }
   return "Evidence gaps should lower certainty until more grounded context is available.";
+}
+
+function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Agent Perspectives</CardTitle>
+        <CardDescription>
+          Specialist reasoning traces returned by the API.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {result?.agent_outputs.map((agent) => (
+          <article key={agent.agent} className="rounded-lg border border-border bg-background p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">{agent.agent}</h3>
+              <Badge tone={agent.stance === "caution" ? "warning" : agent.stance === "support" ? "success" : "muted"}>
+                {asTitleCase(agent.stance)}
+              </Badge>
+            </div>
+            <div className="mb-4 rounded-md border border-border bg-card px-3 py-2">
+              <div className="text-xs uppercase text-muted-foreground">Agent confidence</div>
+              <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
+                {asPercent(agent.confidence_score)}
+              </div>
+            </div>
+            <p className="mb-3 text-xs leading-5 text-muted-foreground">{agent.role}</p>
+            <p className="text-sm leading-6">{agent.conclusion}</p>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Recommendation: {agent.recommendation}
+            </p>
+            <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>Cited sources</span>
+              <span>{agent.evidence_refs.length ? agent.evidence_refs.join(", ") : "No citation"}</span>
+            </div>
+          </article>
+        )) ?? <PlaceholderRows />}
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ConsensusWorkbench() {
@@ -340,61 +386,65 @@ export function ConsensusWorkbench() {
           </ol>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Question</CardTitle>
-              <CardDescription>
-                Choose a demo scenario or submit your own decision prompt.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-                <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-                  <span className="text-sm text-muted-foreground">Prompt type</span>
-                  <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{asTitleCase(domainLabel)}</Badge>
-                </div>
-                <div className="grid gap-2">
-                  {demoPrompts.map((prompt) => (
-                    <Button
-                      key={prompt.label}
-                      type="button"
-                      variant={question === prompt.question ? "secondary" : "ghost"}
-                      className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
-                      onClick={() => setQuestion(prompt.question)}
-                    >
-                      <span className="font-semibold">{prompt.label}</span>
-                    </Button>
-                  ))}
-                </div>
-                <Textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Ask a decision-oriented question..."
-                  required
-                />
-                {error ? (
-                  <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-                    {error}
+        <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Question</CardTitle>
+                <CardDescription>
+                  Choose a demo scenario or submit your own decision prompt.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+                  <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+                    <span className="text-sm text-muted-foreground">Prompt type</span>
+                    <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{asTitleCase(domainLabel)}</Badge>
                   </div>
-                ) : null}
-                <Button type="submit" disabled={isLoading || question.trim().length < 3}>
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Scale className="h-4 w-4" />
-                  )}
-                  Analyze consensus
-                </Button>
-                {isLoading || result ? (
-                  <ReasoningProgress
-                    activeIndex={progressIndex}
-                    isComplete={Boolean(result) && !isLoading}
+                  <div className="grid gap-2">
+                    {demoPrompts.map((prompt) => (
+                      <Button
+                        key={prompt.label}
+                        type="button"
+                        variant={question === prompt.question ? "secondary" : "ghost"}
+                        className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+                        onClick={() => setQuestion(prompt.question)}
+                      >
+                        <span className="font-semibold">{prompt.label}</span>
+                      </Button>
+                    ))}
+                  </div>
+                  <Textarea
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    placeholder="Ask a decision-oriented question..."
+                    required
                   />
-                ) : null}
-              </form>
-            </CardContent>
-          </Card>
+                  {error ? (
+                    <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+                      {error}
+                    </div>
+                  ) : null}
+                  <Button type="submit" disabled={isLoading || question.trim().length < 3}>
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Scale className="h-4 w-4" />
+                    )}
+                    Analyze consensus
+                  </Button>
+                  {isLoading || result ? (
+                    <ReasoningProgress
+                      activeIndex={progressIndex}
+                      isComplete={Boolean(result) && !isLoading}
+                    />
+                  ) : null}
+                </form>
+              </CardContent>
+            </Card>
+
+            <AgentPerspectives result={result} />
+          </div>
 
           <Card>
             <CardHeader>
@@ -488,43 +538,7 @@ export function ConsensusWorkbench() {
           </Card>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Agent Perspectives</CardTitle>
-              <CardDescription>
-                Specialist reasoning traces returned by the API.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              {result?.agent_outputs.map((agent) => (
-                <article key={agent.agent} className="rounded-lg border border-border bg-background p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">{agent.agent}</h3>
-                    <Badge tone={agent.stance === "caution" ? "warning" : agent.stance === "support" ? "success" : "muted"}>
-                      {asTitleCase(agent.stance)}
-                    </Badge>
-                  </div>
-                  <div className="mb-4 rounded-md border border-border bg-card px-3 py-2">
-                    <div className="text-xs uppercase text-muted-foreground">Agent confidence</div>
-                    <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
-                      {asPercent(agent.confidence_score)}
-                    </div>
-                  </div>
-                  <p className="mb-3 text-xs leading-5 text-muted-foreground">{agent.role}</p>
-                  <p className="text-sm leading-6">{agent.conclusion}</p>
-                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    Recommendation: {agent.recommendation}
-                  </p>
-                  <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span>Cited sources</span>
-                    <span>{agent.evidence_refs.length ? agent.evidence_refs.join(", ") : "No citation"}</span>
-                  </div>
-                </article>
-              )) ?? <PlaceholderRows />}
-            </CardContent>
-          </Card>
-
+        <section>
           <Card>
             <CardHeader>
               <CardTitle>Disagreements</CardTitle>
@@ -704,6 +718,7 @@ function EvidenceCard({
 }) {
   const usedBy = agentsUsingSource(result, source.citation_id);
   const displayIdentifier = sourceDisplayIdentifier(source);
+  const isPublicUrl = source.url.startsWith("https://") || source.url.startsWith("http://");
 
   return (
     <article className="rounded-lg border border-border bg-background p-3">
@@ -735,7 +750,21 @@ function EvidenceCard({
       <div className="mb-2 text-[11px] uppercase text-muted-foreground">Evidence excerpt</div>
       <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
       {displayIdentifier ? (
-        <div className="mt-2 break-all font-mono text-xs text-primary">{displayIdentifier}</div>
+        <div className="mt-3">
+          <div className="mb-1 text-[11px] uppercase text-muted-foreground">Public source link</div>
+          {isPublicUrl ? (
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all font-mono text-xs text-primary underline-offset-4 hover:underline"
+            >
+              {source.url}
+            </a>
+          ) : (
+            <div className="break-all font-mono text-xs text-primary">{displayIdentifier}</div>
+          )}
+        </div>
       ) : null}
     </article>
   );

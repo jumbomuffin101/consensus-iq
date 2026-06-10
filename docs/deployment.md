@@ -26,11 +26,11 @@ Optional Foundry IQ:
 - `FOUNDRY_IQ_INDEX_NAME`
 - `FOUNDRY_IQ_API_VERSION`
 
-If Azure OpenAI or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is a clearly labeled Foundry IQ Retrieval Layer demo corpus.
+If Azure OpenAI or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is a clearly labeled Foundry IQ Retrieval Layer curated public corpus.
 
 ### Frontend
 
-- `NEXT_PUBLIC_API_BASE_URL=https://your-backend-domain`
+- `NEXT_PUBLIC_API_URL=https://your-backend-domain`
 
 ## Health Checks
 
@@ -58,7 +58,7 @@ Backend: `http://localhost:8000`
 3. Add environment variable:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://your-backend-domain
+NEXT_PUBLIC_API_URL=https://your-backend-domain
 ```
 
 4. Deploy with the default Next.js build settings.
