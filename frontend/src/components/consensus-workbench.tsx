@@ -204,6 +204,10 @@ function firstSentence(value: string) {
   return (match?.[0] ?? value).trim();
 }
 
+function getDecisionSentence(result: AnalyzeResponse) {
+  return firstSentence(getRecommendationSummary(result));
+}
+
 function getRecommendedApproach(result: AnalyzeResponse) {
   const evidence = getAgent(result, "Evidence Analyst Agent");
   const alternatives = getAgent(result, "Alternative Solutions Agent");
@@ -423,15 +427,18 @@ function AgentAccordionCard({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full p-3 text-left"
+        className="w-full p-4 text-left"
         aria-expanded={isOpen}
       >
-        <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">{agent.agent}</h3>
+            <div className="mt-1 font-mono text-2xl font-semibold text-primary">
+              {asPercent(agent.confidence_score)}
+            </div>
             <p
-              className="mt-1 overflow-hidden text-xs leading-5 text-muted-foreground"
-              style={{ display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}
+              className="mt-2 overflow-hidden text-sm leading-6 text-muted-foreground"
+              style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
             >
               {agent.conclusion}
             </p>
@@ -443,18 +450,14 @@ function AgentAccordionCard({
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>
-            Agent confidence <span className="font-mono text-primary">{asPercent(agent.confidence_score)}</span>
-          </span>
-          <span className="flex flex-wrap items-center gap-1">
-            Sources <CitationChips refs={agent.evidence_refs} linked={false} />
-          </span>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Sources</span>
+          <CitationChips refs={agent.evidence_refs} linked={false} />
         </div>
       </button>
 
       {isOpen ? (
-        <div className="space-y-3 border-t border-border p-3 pt-4">
+        <div className="space-y-3 border-t border-border p-4 pt-4">
           <AgentDetail label="Key Finding" value={agent.conclusion} />
           <AgentDetail label="Recommendation" value={agent.recommendation} />
           <div>
@@ -720,44 +723,12 @@ export function ConsensusWorkbench() {
             <CardContent className="space-y-5">
               {result ? (
                 <>
-                  <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-                    <span className="text-sm text-muted-foreground">Scenario</span>
-                    <Badge tone={result.scenario_label === "Custom" ? "muted" : "success"}>
-                      {asTitleCase(result.scenario_label)}
-                    </Badge>
-                  </div>
+                  <ExecutiveVerdict result={result} />
 
                   <div className="grid gap-3">
                     <RecommendationCard result={result} />
-                    <div className="rounded-lg border border-border bg-background p-4">
-                      <h3 className="mb-2 text-sm font-semibold">Confidence Interpretation</h3>
-                      <p className="mb-3 text-sm leading-6 text-muted-foreground">
-                        {getConfidenceInterpretation(result)}
-                      </p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Metric label="Confidence Score" value={asPercent(result.confidence_score)} />
-                        <Metric label="Agreement Score" value={asPercent(result.agreement_score)} />
-                      </div>
-                    </div>
-                    <ConsensusSection
-                      title="Key Disagreement"
-                      value={getKeyDisagreementSummary(result)}
-                    />
+                    <ConfidenceSummary result={result} question={analyzedQuestion} />
                   </div>
-
-                  <div className="rounded-lg border border-border bg-background p-4">
-                    <h3 className="mb-3 text-sm font-semibold">Confidence Factors</h3>
-                    <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
-                      {getConfidenceFactors(result, analyzedQuestion).map((factor) => (
-                        <li key={factor} className="flex gap-2">
-                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                          <span>{factor}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <ConfidenceCalculation result={result} question={analyzedQuestion} />
-                  <ConfidenceLimiters result={result} question={analyzedQuestion} />
 
                   <DisagreementsPanel result={result} />
 
@@ -789,17 +760,7 @@ export function ConsensusWorkbench() {
                       ))}
                     </div>
                   </div>
-                  {displayedTiming ? (
-                    <div className="space-y-2">
-                      <div className="text-xs uppercase text-muted-foreground">Observed / displayed timing</div>
-                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                        <RuntimeMetric label="Total" value={displayedTiming.total} />
-                        <RuntimeMetric label="Retrieval" value={displayedTiming.retrieval} />
-                        <RuntimeMetric label="Agents" value={displayedTiming.agents} />
-                        <RuntimeMetric label="Consensus" value={displayedTiming.consensus} />
-                      </div>
-                    </div>
-                  ) : null}
+                  <RunMetadata timing={displayedTiming} />
                 </>
               ) : (
                 <EmptyState />
@@ -821,13 +782,38 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
+  return (
+    <div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold uppercase text-primary">Final Recommendation</div>
+          <h3
+            className="mt-1 overflow-hidden text-xl font-semibold leading-7 text-foreground"
+            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+          >
+            {getDecisionSentence(result)}
+          </h3>
+        </div>
+        <Badge tone={result.scenario_label === "Custom" ? "muted" : "success"}>
+          {asTitleCase(result.scenario_label)}
+        </Badge>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Metric label="Confidence" value={asPercent(result.confidence_score)} />
+        <Metric label="Agreement" value={asPercent(result.agreement_score)} />
+      </div>
+    </div>
+  );
+}
+
 function RecommendationCard({ result }: { result: AnalyzeResponse }) {
   return (
-    <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
-      <h3 className="mb-3 text-sm font-semibold">Recommendation</h3>
+    <div className="rounded-lg border border-border bg-background p-4">
+      <h3 className="mb-3 text-sm font-semibold">Decision Details</h3>
       <div className="grid gap-3">
         <RecommendationBlock
-          label="Final Recommendation"
+          label="Recommendation"
           value={getRecommendationSummary(result)}
         />
         <RecommendationBlock
@@ -845,71 +831,94 @@ function RecommendationCard({ result }: { result: AnalyzeResponse }) {
 
 function RecommendationBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-background p-3">
+    <div className="rounded-md border border-border bg-card p-3">
       <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">{label}</div>
-      <p className="text-sm leading-6 text-foreground">{value}</p>
+      <p
+        className="overflow-hidden text-sm leading-6 text-foreground"
+        style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+      >
+        {value}
+      </p>
     </div>
   );
 }
 
-function ConfidenceCalculation({
+function ConfidenceSummary({
   result,
   question,
 }: {
   result: AnalyzeResponse;
   question: string;
 }) {
+  const [showInputs, setShowInputs] = useState(false);
   const calculation = getConfidenceCalculation(result, question);
 
   return (
     <div className="rounded-lg border border-border bg-background p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">Confidence Calculation</h3>
-        <span className="font-mono text-sm text-primary">
-          Final Confidence: {asPercent(result.confidence_score)}
-        </span>
-      </div>
+      <h3 className="mb-3 text-sm font-semibold">Confidence / Disagreement Summary</h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
-          <div className="mb-2 text-[11px] font-semibold uppercase text-emerald-200">
-            Increased confidence
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+            Confidence
           </div>
-          <ul className="space-y-1 text-sm leading-6 text-muted-foreground">
-            {calculation.positiveFactors.map((factor) => (
-              <li key={factor}>+ {factor}</li>
-            ))}
-          </ul>
+          <p
+            className="overflow-hidden text-sm leading-6 text-foreground"
+            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+          >
+            {getConfidenceInterpretation(result)}
+          </p>
         </div>
-        <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
-          <div className="mb-2 text-[11px] font-semibold uppercase text-amber-100">
-            Reduced confidence
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+            Key Disagreement
           </div>
-          <ul className="space-y-1 text-sm leading-6 text-muted-foreground">
-            {calculation.negativeFactors.map((factor) => (
-              <li key={factor}>- {factor}</li>
-            ))}
-          </ul>
+          <p
+            className="overflow-hidden text-sm leading-6 text-foreground"
+            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+          >
+            {getKeyDisagreementSummary(result)}
+          </p>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={() => setShowInputs((current) => !current)}
+        className="mt-3 flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-left text-sm"
+        aria-expanded={showInputs}
+      >
+        <span>Score Inputs</span>
+        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showInputs ? "rotate-90" : ""}`} />
+      </button>
+      {showInputs ? (
+        <div className="mt-3 grid gap-3">
+          <SummaryList title="Confidence Factors" items={getConfidenceFactors(result, question)} marker="+" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SummaryList title="Increased Confidence" items={calculation.positiveFactors} marker="+" />
+            <SummaryList title="Reduced Confidence" items={calculation.negativeFactors} marker="-" />
+          </div>
+          <SummaryList title="Why Confidence Is Not Higher" items={getConfidenceLimiters(result, question)} marker="-" />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function ConfidenceLimiters({
-  result,
-  question,
+function SummaryList({
+  title,
+  items,
+  marker,
 }: {
-  result: AnalyzeResponse;
-  question: string;
+  title: string;
+  items: string[];
+  marker: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-background p-4">
-      <h3 className="mb-3 text-sm font-semibold">Why Confidence Is Not Higher</h3>
-      <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
-        {getConfidenceLimiters(result, question).map((limiter) => (
-          <li key={limiter} className="flex gap-2">
-            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
-            <span>{limiter}</span>
+    <div className="rounded-md border border-border bg-card p-3">
+      <div className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">{title}</div>
+      <ul className="space-y-1 text-sm leading-6 text-muted-foreground">
+        {items.map((item) => (
+          <li key={item}>
+            <span className="font-mono text-primary">{marker}</span> {item}
           </li>
         ))}
       </ul>
@@ -917,49 +926,53 @@ function ConfidenceLimiters({
   );
 }
 
-function ConsensusSection({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-background p-4">
-      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
-      <p className="text-sm leading-6 text-muted-foreground">{value}</p>
-    </div>
-  );
-}
-
 function ReasoningBreakdown({ result }: { result: AnalyzeResponse }) {
+  const [openStep, setOpenStep] = useState("Consensus Judge");
   const risk = getAgent(result, "Risk Analyst Agent");
   const evidence = getAgent(result, "Evidence Analyst Agent");
   const alternatives = getAgent(result, "Alternative Solutions Agent");
+  const steps = [
+    {
+      label: "Planner",
+      value: getPlannerSummary(result),
+      refs: result.sources.map((source) => source.citation_id),
+    },
+    {
+      label: "Risk Analyst",
+      value: risk?.conclusion ?? "No risk analyst output returned.",
+      refs: risk?.evidence_refs ?? [],
+    },
+    {
+      label: "Evidence Analyst",
+      value: evidence?.conclusion ?? "No evidence analyst output returned.",
+      refs: evidence?.evidence_refs ?? [],
+    },
+    {
+      label: "Alternative Solutions Analyst",
+      value: alternatives?.conclusion ?? "No alternatives analyst output returned.",
+      refs: alternatives?.evidence_refs ?? [],
+    },
+    {
+      label: "Consensus Judge",
+      value: getConsensusJudgeSummary(result),
+      refs: result.sources.map((source) => source.citation_id),
+    },
+  ];
 
   return (
     <div className="rounded-lg border border-border bg-background p-4">
       <h3 className="mb-3 text-sm font-semibold">How Consensus Was Reached</h3>
-      <div className="space-y-3">
-        <ReasoningStep
-          label="Planner"
-          value={getPlannerSummary(result)}
-          refs={result.sources.map((source) => source.citation_id)}
-        />
-        <ReasoningStep
-          label="Risk Analyst"
-          value={risk?.conclusion ?? "No risk analyst output returned."}
-          refs={risk?.evidence_refs}
-        />
-        <ReasoningStep
-          label="Evidence Analyst"
-          value={evidence?.conclusion ?? "No evidence analyst output returned."}
-          refs={evidence?.evidence_refs}
-        />
-        <ReasoningStep
-          label="Alternative Solutions Analyst"
-          value={alternatives?.conclusion ?? "No alternatives analyst output returned."}
-          refs={alternatives?.evidence_refs}
-        />
-        <ReasoningStep
-          label="Consensus Judge"
-          value={getConsensusJudgeSummary(result)}
-          refs={result.sources.map((source) => source.citation_id)}
-        />
+      <div className="space-y-2">
+        {steps.map((step) => (
+          <ReasoningStep
+            key={step.label}
+            label={step.label}
+            value={step.value}
+            refs={step.refs}
+            isOpen={openStep === step.label}
+            onToggle={() => setOpenStep((current) => (current === step.label ? "" : step.label))}
+          />
+        ))}
       </div>
     </div>
   );
@@ -969,18 +982,42 @@ function ReasoningStep({
   label,
   value,
   refs = [],
+  isOpen,
+  onToggle,
 }: {
   label: string;
   value: string;
   refs?: string[];
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <div className="rounded-md border border-border bg-card p-3">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
-        {refs.length ? <CitationChips refs={refs} /> : null}
-      </div>
-      <p className="text-sm leading-6 text-foreground">{value}</p>
+    <div className="rounded-md border border-border bg-card">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full p-3 text-left"
+        aria-expanded={isOpen}
+      >
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
+            <span className="text-xs font-semibold uppercase text-muted-foreground">{label}</span>
+          </div>
+          {refs.length ? <CitationChips refs={refs} /> : null}
+        </div>
+        <p
+          className="overflow-hidden text-sm leading-6 text-foreground"
+          style={{ display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}
+        >
+          {firstSentence(value)}
+        </p>
+      </button>
+      {isOpen ? (
+        <div className="border-t border-border px-3 py-3">
+          <p className="text-sm leading-6 text-foreground">{value}</p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1161,6 +1198,41 @@ function RuntimeMetric({ label, value }: { label: string; value: number }) {
     <div className="rounded-md border border-border bg-background px-3 py-2">
       <span>{label}</span>
       <span className="float-right font-mono">{value}ms</span>
+    </div>
+  );
+}
+
+function RunMetadata({ timing }: { timing: ReturnType<typeof getDisplayedTiming> }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!timing) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-background">
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="flex w-full items-center justify-between gap-3 p-3 text-left"
+        aria-expanded={isOpen}
+      >
+        <div>
+          <div className="text-sm font-semibold">Run Metadata</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Total {timing.total}ms · Retrieval {timing.retrieval}ms
+          </div>
+        </div>
+        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
+      </button>
+      {isOpen ? (
+        <div className="border-t border-border p-3">
+          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+            <RuntimeMetric label="Total" value={timing.total} />
+            <RuntimeMetric label="Retrieval" value={timing.retrieval} />
+            <RuntimeMetric label="Agents" value={timing.agents} />
+            <RuntimeMetric label="Consensus" value={timing.consensus} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
