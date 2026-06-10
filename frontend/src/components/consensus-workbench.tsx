@@ -139,6 +139,41 @@ function getConfidenceFactors(result: AnalyzeResponse, question: string) {
   return factors.slice(0, 5);
 }
 
+function getConfidenceCalculation(result: AnalyzeResponse, question: string) {
+  const averageRelevance =
+    result.sources.reduce((total, source) => total + source.relevance_score, 0) /
+    Math.max(result.sources.length, 1);
+  const missingEvidenceCount = result.agent_outputs.reduce(
+    (total, agent) => total + agent.missing_evidence.length,
+    0,
+  );
+  const highRiskDomain = ["Clinical", "Cybersecurity", "Finance"].includes(result.scenario_label);
+  const hasPromptInjection = /ignore .*instructions|100% certain|100% confidence|no uncertainty/i.test(question);
+  const highSeverityDisagreement = result.disagreements.some((item) => item.severity === "high");
+
+  const positiveFactors = [
+    averageRelevance >= 0.85 ? "Strong source relevance" : null,
+    result.sources.length >= 3 ? "Multiple supporting sources" : null,
+    result.agreement_score >= 0.7 ? "Agent agreement supports the recommendation" : null,
+    result.agent_outputs.every((agent) => agent.evidence_refs.length > 0)
+      ? "Specialists cite retrieved evidence"
+      : null,
+  ].filter(Boolean) as string[];
+
+  const negativeFactors = [
+    missingEvidenceCount > 0 ? "Missing evidence remains unresolved" : null,
+    highRiskDomain ? "High-risk domain uncertainty" : null,
+    result.agreement_score < 0.7 ? "Agent disagreement reduced certainty" : null,
+    highSeverityDisagreement ? "High-severity disagreement requires caution" : null,
+    hasPromptInjection ? "Adversarial certainty request detected" : null,
+  ].filter(Boolean) as string[];
+
+  return {
+    positiveFactors: positiveFactors.length ? positiveFactors : ["Grounded sources available"],
+    negativeFactors: negativeFactors.length ? negativeFactors : ["No major confidence penalties detected"],
+  };
+}
+
 function getDisplayedTiming(metadata: AnalyzeResponse["metadata"]) {
   if (!metadata) return null;
 
@@ -232,13 +267,6 @@ function sourceDisplaySnippet(snippet: string) {
     .replace(/^Demo corpus source:/, "Curated public corpus source:");
 }
 
-function sourceDisplayIdentifier(source: AnalyzeResponse["sources"][number]) {
-  if (source.url.startsWith("mock://foundry-iq/")) {
-    return source.url.replace("mock://foundry-iq/", "consensus-iq://evidence/");
-  }
-  return source.url || source.id || source.citation_id;
-}
-
 function sourceType(source: AnalyzeResponse["sources"][number]) {
   return sourceDisplayName(source.source).includes("Curated Public Corpus")
     ? "Curated public corpus"
@@ -273,26 +301,45 @@ function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
       </CardHeader>
       <CardContent className="grid gap-4">
         {result?.agent_outputs.map((agent) => (
-          <article key={agent.agent} className="rounded-lg border border-border bg-background p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">{agent.agent}</h3>
+          <article key={agent.agent} className="rounded-lg border border-border bg-background p-3">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">{agent.agent}</h3>
+                <div className="mt-1 text-xs uppercase text-muted-foreground">Agent confidence</div>
+                <div className="font-mono text-xl font-semibold text-foreground">
+                  {asPercent(agent.confidence_score)}
+                </div>
+              </div>
               <Badge tone={agent.stance === "caution" ? "warning" : agent.stance === "support" ? "success" : "muted"}>
                 {asTitleCase(agent.stance)}
               </Badge>
             </div>
-            <div className="mb-4 rounded-md border border-border bg-card px-3 py-2">
-              <div className="text-xs uppercase text-muted-foreground">Agent confidence</div>
-              <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
-                {asPercent(agent.confidence_score)}
+            <div className="space-y-3">
+              <div>
+                <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                  Key Finding
+                </div>
+                <p
+                  className="overflow-hidden text-sm leading-6 text-foreground"
+                  style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" }}
+                >
+                  {agent.conclusion}
+                </p>
+              </div>
+              <div>
+                <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                  Recommendation
+                </div>
+                <p
+                  className="overflow-hidden text-xs leading-5 text-muted-foreground"
+                  style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+                >
+                  {agent.recommendation}
+                </p>
               </div>
             </div>
-            <p className="mb-3 text-xs leading-5 text-muted-foreground">{agent.role}</p>
-            <p className="text-sm leading-6">{agent.conclusion}</p>
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Recommendation: {agent.recommendation}
-            </p>
             <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span>Cited sources</span>
+              <span>Sources</span>
               <span>{agent.evidence_refs.length ? agent.evidence_refs.join(", ") : "No citation"}</span>
             </div>
           </article>
@@ -302,12 +349,86 @@ function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
   );
 }
 
+function DisagreementsPanel({ result }: { result: AnalyzeResponse | null }) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Disagreements</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Where agents diverged before final synthesis.
+          </p>
+        </div>
+        <Badge tone="muted">Analysis</Badge>
+      </div>
+
+      {result ? (
+        result.disagreements.length ? (
+          <div className="space-y-3">
+            {result.disagreements.map((item) => (
+              <div key={item.topic} className="rounded-md border border-border bg-card p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-200" />
+                    <h4 className="text-sm font-semibold">{item.topic}</h4>
+                  </div>
+                  <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
+                    {asTitleCase(item.severity)}
+                  </Badge>
+                </div>
+                <div className="space-y-3 text-sm leading-6">
+                  <DisagreementBlock
+                    label="Why It Matters"
+                    value={disagreementWhyItMatters(item.kind)}
+                  />
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <div className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
+                      Agent Viewpoints
+                    </div>
+                    <ul className="space-y-1 text-muted-foreground">
+                      {item.positions.map((position) => (
+                        <li key={position}>{position}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <DisagreementBlock
+                    label="Resolution Strategy"
+                    value={item.suggested_resolution}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-md border border-border bg-card p-3 text-sm leading-6 text-muted-foreground">
+            No material disagreements detected. The agents still preserve limitations and missing evidence in their individual perspectives.
+          </div>
+        )
+      ) : (
+        <div className="rounded-md border border-border bg-card p-3 text-sm text-muted-foreground">
+          Disagreement analysis appears after a question is analyzed.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DisagreementBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background p-3">
+      <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">{label}</div>
+      <p className="text-muted-foreground">{value}</p>
+    </div>
+  );
+}
+
 export function ConsensusWorkbench() {
   const [question, setQuestion] = useState(starterQuestion);
   const [analyzedQuestion, setAnalyzedQuestion] = useState(starterQuestion);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progressIndex, setProgressIndex] = useState(0);
+  const [openSourceId, setOpenSourceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const domainLabel = promptDomainLabel(question);
   const displayedTiming = result ? getDisplayedTiming(result.metadata) : null;
@@ -321,6 +442,10 @@ export function ConsensusWorkbench() {
 
     return () => window.clearInterval(interval);
   }, [isLoading]);
+
+  useEffect(() => {
+    setOpenSourceId(result?.sources[0]?.citation_id ?? null);
+  }, [result]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -499,17 +624,9 @@ export function ConsensusWorkbench() {
                       ))}
                     </ul>
                   </div>
-                  {displayedTiming ? (
-                    <div className="space-y-2">
-                      <div className="text-xs uppercase text-muted-foreground">Observed / displayed timing</div>
-                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                        <RuntimeMetric label="Total" value={displayedTiming.total} />
-                        <RuntimeMetric label="Retrieval" value={displayedTiming.retrieval} />
-                        <RuntimeMetric label="Agents" value={displayedTiming.agents} />
-                        <RuntimeMetric label="Consensus" value={displayedTiming.consensus} />
-                      </div>
-                    </div>
-                  ) : null}
+                  <ConfidenceCalculation result={result} question={analyzedQuestion} />
+
+                  <DisagreementsPanel result={result} />
 
                   <ReasoningBreakdown result={result} />
 
@@ -526,65 +643,34 @@ export function ConsensusWorkbench() {
                     />
                     <div className="space-y-3">
                       {result.sources.map((source) => (
-                        <EvidenceCard key={source.citation_id} source={source} result={result} />
+                        <EvidenceCard
+                          key={source.citation_id}
+                          source={source}
+                          result={result}
+                          isOpen={openSourceId === source.citation_id}
+                          onToggle={() =>
+                            setOpenSourceId((current) =>
+                              current === source.citation_id ? null : source.citation_id,
+                            )
+                          }
+                        />
                       ))}
                     </div>
                   </div>
+                  {displayedTiming ? (
+                    <div className="space-y-2">
+                      <div className="text-xs uppercase text-muted-foreground">Observed / displayed timing</div>
+                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                        <RuntimeMetric label="Total" value={displayedTiming.total} />
+                        <RuntimeMetric label="Retrieval" value={displayedTiming.retrieval} />
+                        <RuntimeMetric label="Agents" value={displayedTiming.agents} />
+                        <RuntimeMetric label="Consensus" value={displayedTiming.consensus} />
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <EmptyState />
-              )}
-            </CardContent>
-          </Card>
-        </section>
-
-        <section>
-          <Card>
-            <CardHeader>
-              <CardTitle>Disagreements</CardTitle>
-              <CardDescription>
-                Where agents diverged before final synthesis.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {result ? (
-                result.disagreements.length ? (
-                  result.disagreements.map((item) => (
-                    <div key={item.topic} className="rounded-lg border border-border bg-background p-4">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-200" />
-                          <h3 className="text-sm font-semibold">{item.topic}</h3>
-                        </div>
-                        <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
-                          {asTitleCase(item.severity)}
-                        </Badge>
-                      </div>
-                      <p className="mb-3 text-xs leading-5 text-muted-foreground">
-                        Why it matters: {disagreementWhyItMatters(item.kind)}
-                      </p>
-                      <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-                        Agent viewpoints
-                      </div>
-                      <ul className="space-y-2 text-sm leading-6 text-muted-foreground">
-                        {item.positions.map((position) => (
-                          <li key={position}>{position}</li>
-                        ))}
-                      </ul>
-                      <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                        Resolution: {item.suggested_resolution}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-lg border border-border bg-background p-4 text-sm leading-6 text-muted-foreground">
-                    No material disagreements detected. The agents still preserve limitations and missing evidence in their individual perspectives.
-                  </div>
-                )
-              ) : (
-                <div className="rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground">
-                  Disagreement analysis appears after a question is analyzed.
-                </div>
               )}
             </CardContent>
           </Card>
@@ -599,6 +685,49 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-border bg-background p-4">
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div className="mt-2 font-mono text-3xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function ConfidenceCalculation({
+  result,
+  question,
+}: {
+  result: AnalyzeResponse;
+  question: string;
+}) {
+  const calculation = getConfidenceCalculation(result, question);
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">Confidence Calculation</h3>
+        <span className="font-mono text-sm text-primary">
+          Final Confidence: {asPercent(result.confidence_score)}
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <div className="mb-2 text-[11px] font-semibold uppercase text-emerald-200">
+            Increased confidence
+          </div>
+          <ul className="space-y-1 text-sm leading-6 text-muted-foreground">
+            {calculation.positiveFactors.map((factor) => (
+              <li key={factor}>+ {factor}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+          <div className="mb-2 text-[11px] font-semibold uppercase text-amber-100">
+            Reduced confidence
+          </div>
+          <ul className="space-y-1 text-sm leading-6 text-muted-foreground">
+            {calculation.negativeFactors.map((factor) => (
+              <li key={factor}>- {factor}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
@@ -712,58 +841,86 @@ function TraceMetric({ label, value }: { label: string; value: string }) {
 function EvidenceCard({
   source,
   result,
+  isOpen,
+  onToggle,
 }: {
   source: AnalyzeResponse["sources"][number];
   result: AnalyzeResponse;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
   const usedBy = agentsUsingSource(result, source.citation_id);
-  const displayIdentifier = sourceDisplayIdentifier(source);
   const isPublicUrl = source.url.startsWith("https://") || source.url.startsWith("http://");
 
   return (
-    <article className="rounded-lg border border-border bg-background p-3">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium">{source.title}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{sourceDisplayName(source.source)}</div>
+    <article className="rounded-lg border border-border bg-background">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-start justify-between gap-3 p-3 text-left"
+        aria-expanded={isOpen}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <span className="font-mono text-xs text-primary">[{source.citation_id}]</span>
+            <span className="text-sm font-medium text-foreground">{source.title}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>Relevance: {asPercent(source.relevance_score)}</span>
+            <span>Used By: {usedBy || "Consensus context"}</span>
+          </div>
+          <div className="mt-2 flex items-center gap-1 text-xs font-medium text-primary">
+            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+            {isOpen ? "Hide Evidence" : "View Evidence"}
+          </div>
         </div>
         <Badge tone="muted">{source.citation_id}</Badge>
-      </div>
-      <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-        <div>
-          <span className="text-muted-foreground">Citation ID </span>
-          <span className="font-mono text-primary">{source.citation_id}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Source type </span>
-          <span className="text-foreground">{sourceType(source)}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Relevance </span>
-          <span className="font-mono text-primary">{asPercent(source.relevance_score)}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Used by agents </span>
-          <span className="text-foreground">{usedBy || "Referenced in consensus context"}</span>
-        </div>
-      </div>
-      <div className="mb-2 text-[11px] uppercase text-muted-foreground">Evidence excerpt</div>
-      <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
-      {displayIdentifier ? (
-        <div className="mt-3">
-          <div className="mb-1 text-[11px] uppercase text-muted-foreground">Public source link</div>
-          {isPublicUrl ? (
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all font-mono text-xs text-primary underline-offset-4 hover:underline"
-            >
-              {source.url}
-            </a>
-          ) : (
-            <div className="break-all font-mono text-xs text-primary">{displayIdentifier}</div>
-          )}
+      </button>
+
+      {isOpen ? (
+        <div className="border-t border-border p-3 pt-4">
+          <div className="mb-3 text-xs text-muted-foreground">
+            {sourceDisplayName(source.source)}
+          </div>
+          <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <span>Title </span>
+              <span className="text-foreground">{source.title}</span>
+            </div>
+            <div>
+              <span>Citation ID </span>
+              <span className="font-mono text-primary">{source.citation_id}</span>
+            </div>
+            <div>
+              <span>Source Type </span>
+              <span className="text-foreground">{sourceType(source)}</span>
+            </div>
+            <div>
+              <span>Relevance </span>
+              <span className="font-mono text-primary">{asPercent(source.relevance_score)}</span>
+            </div>
+            <div>
+              <span>Used By Agents </span>
+              <span className="text-foreground">{usedBy || "Referenced in consensus context"}</span>
+            </div>
+          </div>
+          <div className="mb-2 text-[11px] uppercase text-muted-foreground">Evidence Excerpt</div>
+          <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
+          <div className="mt-3">
+            <div className="mb-1 text-[11px] uppercase text-muted-foreground">Public Source Link</div>
+            {isPublicUrl ? (
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all font-mono text-xs text-primary underline-offset-4 hover:underline"
+              >
+                {source.url}
+              </a>
+            ) : (
+              <div className="text-xs text-muted-foreground">Public URL unavailable</div>
+            )}
+          </div>
         </div>
       ) : null}
     </article>

@@ -19,6 +19,22 @@ High-stakes decisions often depend on incomplete evidence, competing interpretat
 
 ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, detects the decision scenario, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with dynamic confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Foundry IQ integrations both have fallback providers.
 
+## Why ConsensusIQ
+
+ConsensusIQ is designed for decisions where a single fluent answer is not enough. It separates the reasoning process into independent specialist perspectives, then makes agreement, disagreement, source grounding, and confidence visible to the reviewer.
+
+- **Multi-agent reasoning:** planner, risk, evidence, alternatives, and consensus judge roles reason over the same question.
+- **Independent specialist perspectives:** each specialist produces its own conclusion, recommendation, evidence references, and confidence.
+- **Disagreement detection:** the platform highlights conflicting recommendations, confidence gaps, and missing evidence before synthesis.
+- **Confidence scoring:** final confidence reflects source relevance, agent agreement, missing facts, domain risk, and adversarial wording.
+- **Foundry IQ retrieval architecture:** retrieval is provider-based so the same pipeline can use either a live Microsoft Foundry IQ endpoint or the curated public corpus fallback.
+
+## Evidence Retrieval
+
+The public demo uses a curated public evidence corpus through the same retrieval abstraction that would support Microsoft Foundry IQ retrieval in production deployments.
+
+Each retrieved item is normalized into the same citation-ready shape used by the agents: citation ID, title, source label, public URL, evidence excerpt, and relevance score. The deployed demo does not claim live Foundry IQ web retrieval; it demonstrates the integration boundary and citation-grounded reasoning flow without paid or quota-limited Azure dependencies.
+
 ## Microsoft IQ Integration
 
 Foundry IQ is the intended retrieval layer for ConsensusIQ. The backend uses a provider abstraction so the same reasoning pipeline can run against either a live Microsoft Foundry IQ endpoint or the curated local retrieval fallback.

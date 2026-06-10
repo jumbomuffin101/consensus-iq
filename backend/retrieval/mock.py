@@ -4,7 +4,7 @@ from retrieval.base import BaseRetrievalProvider
 
 
 class MockRetrievalProvider(BaseRetrievalProvider):
-    """Demo corpus provider used when live Foundry IQ credentials are unavailable."""
+    """Curated public corpus provider used when live Foundry IQ credentials are unavailable."""
 
     name = "mock-foundry-iq"
 
@@ -33,8 +33,8 @@ class MockRetrievalProvider(BaseRetrievalProvider):
         ):
             return [
                 {
-                    "title": "Acute ischemic stroke treatment window",
-                    "url": "https://www.ahajournals.org/doi/10.1161/STR.0000000000000211",
+                    "title": "American Stroke Association acute stroke resources",
+                    "url": "https://www.stroke.org/en/about-stroke",
                     "snippet": (
                         "patients within the early onset window require urgent stroke-team "
                         "assessment, non-contrast brain imaging to exclude hemorrhage, and "
@@ -43,7 +43,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     "score": 0.95,
                 },
                 {
-                    "title": "Thrombolysis contraindication checklist",
+                    "title": "NIH NINDS stroke information",
                     "url": "https://www.ninds.nih.gov/health-information/disorders/stroke",
                     "snippet": (
                         "bleeding risk, anticoagulant exposure, recent surgery, severe "
@@ -53,8 +53,8 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     "score": 0.9,
                 },
                 {
-                    "title": "Time-critical stroke workflow",
-                    "url": "https://www.ninds.nih.gov/health-information/disorders/stroke",
+                    "title": "American Stroke Association treatment overview",
+                    "url": "https://www.stroke.org/en/about-stroke",
                     "snippet": (
                         "rapid treatment decisions should preserve neurologic benefit while "
                         "avoiding overconfidence when onset time, imaging, or consent details "
@@ -68,7 +68,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "New-onset focal seizure diagnostic priority",
-                    "url": "https://www.ncbi.nlm.nih.gov/books/NBK557553/",
+                    "url": "https://www.merckmanuals.com/professional/neurologic-disorders/seizure-disorders/seizure-disorders",
                     "snippet": (
                         "new focal neurologic features increase concern for structural lesions, "
                         "hemorrhage, or mass effect, making intracranial imaging a safety gate "
@@ -78,7 +78,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Lumbar puncture imaging safety criteria",
-                    "url": "https://www.ncbi.nlm.nih.gov/books/NBK557553/",
+                    "url": "https://www.merckmanuals.com/professional/neurologic-disorders/meningitis/acute-bacterial-meningitis",
                     "snippet": (
                         "papilledema, focal deficits, immunocompromise, altered mental status, "
                         "or seizure can trigger imaging before LP to reduce herniation risk."
@@ -87,7 +87,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                 },
                 {
                     "title": "Parallel emergency treatment considerations",
-                    "url": "https://www.ncbi.nlm.nih.gov/books/NBK557553/",
+                    "url": "https://www.ninds.nih.gov/health-information/disorders/stroke",
                     "snippet": (
                         "when infection is plausible, empiric treatment and stabilization may "
                         "run in parallel with imaging rather than waiting passively."
@@ -100,7 +100,7 @@ class MockRetrievalProvider(BaseRetrievalProvider):
             return [
                 {
                     "title": "Customer data exfiltration response",
-                    "url": "https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final",
+                    "url": "https://csrc.nist.gov/pubs/sp/800/61/r2/final",
                     "snippet": (
                         "personal-device copies of customer data should be treated as a security "
                         "incident requiring containment, preservation of evidence, and scope "
@@ -150,11 +150,12 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     "score": 0.87,
                 },
                 {
-                    "title": "Hybrid evaluation design",
-                    "url": "https://arxiv.org/abs/2603.18765",
+                    "title": "Educational assessment validity standards",
+                    "url": "https://www.testingstandards.net/open-access-files.html",
                     "snippet": (
-                        "LLMs can support draft scoring, feedback generation, or triage when "
-                        "paired with calibration sets, human adjudication, and audit sampling."
+                        "validity, reliability, fairness, and intended score use should be "
+                        "documented before automated scoring is trusted for consequential "
+                        "education decisions."
                     ),
                     "score": 0.8,
                 },
