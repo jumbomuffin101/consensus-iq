@@ -245,25 +245,6 @@ function getKeyDisagreementSummary(result: AnalyzeResponse) {
   return `${keyDisagreement.topic}: ${keyDisagreement.suggested_resolution}`;
 }
 
-function getConsensusJudgeSummary(result: AnalyzeResponse) {
-  const disagreement = getKeyDisagreementSummary(result);
-  return `Final recommendation balances ${asPercent(result.confidence_score)} confidence, ${asPercent(result.agreement_score)} agreement, and the key disagreement: ${disagreement}`;
-}
-
-function getPlannerSummary(result: AnalyzeResponse) {
-  return `${result.scenario_label} scenario detected; the question was routed through grounded retrieval, risk review, evidence review, alternatives analysis, and consensus judging.`;
-}
-
-function getConfidenceInterpretation(result: AnalyzeResponse) {
-  if (result.confidence_score >= 0.75) {
-    return "High confidence: retrieved evidence and agent agreement strongly support the recommendation.";
-  }
-  if (result.confidence_score >= 0.5) {
-    return "Moderate confidence: the recommendation is supported, but disagreement or missing facts require caution.";
-  }
-  return "Low confidence: unresolved evidence gaps, high-risk context, or adversarial wording materially limit certainty.";
-}
-
 function getTopRelevance(result: AnalyzeResponse) {
   if (!result.sources.length) return 0;
   return Math.max(...result.sources.map((source) => source.relevance_score));
@@ -492,6 +473,12 @@ function AgentDetail({ label, value }: { label: string; value: string }) {
 }
 
 function DisagreementsPanel({ result }: { result: AnalyzeResponse | null }) {
+  const [openTopic, setOpenTopic] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOpenTopic(result?.disagreements[0]?.topic ?? null);
+  }, [result]);
+
   return (
     <div className="rounded-lg border border-border bg-background p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -507,39 +494,53 @@ function DisagreementsPanel({ result }: { result: AnalyzeResponse | null }) {
       {result ? (
         result.disagreements.length ? (
           <div className="space-y-3">
-            {result.disagreements.map((item) => (
-              <div key={item.topic} className="rounded-md border border-border bg-card p-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-200" />
-                    <h4 className="text-sm font-semibold">{item.topic}</h4>
-                  </div>
-                  <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
-                    {asTitleCase(item.severity)}
-                  </Badge>
-                </div>
-                <div className="space-y-3 text-sm leading-6">
-                  <DisagreementBlock
-                    label="Why It Matters"
-                    value={disagreementWhyItMatters(item.kind)}
-                  />
-                  <div className="rounded-md border border-border bg-background p-3">
-                    <div className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                      Agent Viewpoints
+            {result.disagreements.map((item) => {
+              const isOpen = openTopic === item.topic;
+
+              return (
+                <div key={item.topic} className="rounded-md border border-border bg-card">
+                  <button
+                    type="button"
+                    onClick={() => setOpenTopic((current) => (current === item.topic ? null : item.topic))}
+                    className="flex w-full items-center justify-between gap-3 p-3 text-left"
+                    aria-expanded={isOpen}
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-200" />
+                      <h4 className="truncate text-sm font-semibold">{item.topic}</h4>
                     </div>
-                    <ul className="space-y-1 text-muted-foreground">
-                      {item.positions.map((position) => (
-                        <li key={position}>{position}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <DisagreementBlock
-                    label="Resolution Strategy"
-                    value={item.suggested_resolution}
-                  />
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
+                        {asTitleCase(item.severity)}
+                      </Badge>
+                      <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                    </div>
+                  </button>
+                  {isOpen ? (
+                    <div className="space-y-3 border-t border-border p-3 text-sm leading-6">
+                      <DisagreementBlock
+                        label="Why It Matters"
+                        value={disagreementWhyItMatters(item.kind)}
+                      />
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <div className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
+                          Agent Viewpoints
+                        </div>
+                        <ul className="space-y-1 text-muted-foreground">
+                          {item.positions.map((position) => (
+                            <li key={position}>{position}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <DisagreementBlock
+                        label="Resolution Strategy"
+                        value={item.suggested_resolution}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-md border border-border bg-card p-3 text-sm leading-6 text-muted-foreground">
@@ -653,65 +654,61 @@ export function ConsensusWorkbench() {
           </ol>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Question</CardTitle>
-                <CardDescription>
-                  Choose a demo scenario or submit your own decision prompt.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-                  <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-                    <span className="text-sm text-muted-foreground">Prompt type</span>
-                    <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{asTitleCase(domainLabel)}</Badge>
+        <section className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Question</CardTitle>
+              <CardDescription>
+                Choose a demo scenario or submit your own decision prompt.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+                <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Prompt type</span>
+                  <Badge tone={domainLabel === "Custom" ? "muted" : "success"}>{asTitleCase(domainLabel)}</Badge>
+                </div>
+                <div className="grid gap-2">
+                  {demoPrompts.map((prompt) => (
+                    <Button
+                      key={prompt.label}
+                      type="button"
+                      variant={question === prompt.question ? "secondary" : "ghost"}
+                      className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+                      onClick={() => setQuestion(prompt.question)}
+                    >
+                      <span className="font-semibold">{prompt.label}</span>
+                    </Button>
+                  ))}
+                </div>
+                <Textarea
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  placeholder="Ask a decision-oriented question..."
+                  required
+                />
+                {error ? (
+                  <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+                    {error}
                   </div>
-                  <div className="grid gap-2">
-                    {demoPrompts.map((prompt) => (
-                      <Button
-                        key={prompt.label}
-                        type="button"
-                        variant={question === prompt.question ? "secondary" : "ghost"}
-                        className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
-                        onClick={() => setQuestion(prompt.question)}
-                      >
-                        <span className="font-semibold">{prompt.label}</span>
-                      </Button>
-                    ))}
-                  </div>
-                  <Textarea
-                    value={question}
-                    onChange={(event) => setQuestion(event.target.value)}
-                    placeholder="Ask a decision-oriented question..."
-                    required
+                ) : null}
+                <Button type="submit" disabled={isLoading || question.trim().length < 3}>
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Scale className="h-4 w-4" />
+                  )}
+                  Analyze consensus
+                </Button>
+                {isLoading || result ? (
+                  <ReasoningProgress
+                    activeIndex={progressIndex}
+                    isComplete={Boolean(result) && !isLoading}
                   />
-                  {error ? (
-                    <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-                      {error}
-                    </div>
-                  ) : null}
-                  <Button type="submit" disabled={isLoading || question.trim().length < 3}>
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scale className="h-4 w-4" />
-                    )}
-                    Analyze consensus
-                  </Button>
-                  {isLoading || result ? (
-                    <ReasoningProgress
-                      activeIndex={progressIndex}
-                      isComplete={Boolean(result) && !isLoading}
-                    />
-                  ) : null}
-                </form>
-              </CardContent>
-            </Card>
-
-            <AgentPerspectives result={result} />
-          </div>
+                ) : null}
+              </form>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -729,38 +726,6 @@ export function ConsensusWorkbench() {
                     <RecommendationCard result={result} />
                     <ConfidenceSummary result={result} question={analyzedQuestion} />
                   </div>
-
-                  <DisagreementsPanel result={result} />
-
-                  <ReasoningBreakdown result={result} />
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold">Retrieved Evidence</h3>
-                      <Badge tone="muted">Foundry IQ Retrieval</Badge>
-                    </div>
-                    <RetrievalTrace
-                      result={result}
-                      query={analyzedQuestion}
-                      retrievalLatency={displayedTiming?.retrieval}
-                    />
-                    <div className="space-y-3">
-                      {result.sources.map((source) => (
-                        <EvidenceCard
-                          key={source.citation_id}
-                          source={source}
-                          result={result}
-                          isOpen={openSourceId === source.citation_id}
-                          onToggle={() =>
-                            setOpenSourceId((current) =>
-                              current === source.citation_id ? null : source.citation_id,
-                            )
-                          }
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <RunMetadata timing={displayedTiming} />
                 </>
               ) : (
                 <EmptyState />
@@ -768,6 +733,25 @@ export function ConsensusWorkbench() {
             </CardContent>
           </Card>
         </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <AgentPerspectives result={result} />
+          <DisagreementsPanel result={result} />
+        </section>
+
+        {result ? (
+          <RetrievedEvidence
+            result={result}
+            query={analyzedQuestion}
+            retrievalLatency={displayedTiming?.retrieval}
+            openSourceId={openSourceId}
+            onToggleSource={(citationId) =>
+              setOpenSourceId((current) => (current === citationId ? null : citationId))
+            }
+          />
+        ) : null}
+
+        <RunMetadata timing={displayedTiming} />
       </div>
     </main>
   );
@@ -811,7 +795,7 @@ function RecommendationCard({ result }: { result: AnalyzeResponse }) {
   return (
     <div className="rounded-lg border border-border bg-background p-4">
       <h3 className="mb-3 text-sm font-semibold">Decision Details</h3>
-      <div className="grid gap-3">
+      <div className="grid gap-3 lg:grid-cols-3">
         <RecommendationBlock
           label="Recommendation"
           value={getRecommendationSummary(result)}
@@ -855,22 +839,34 @@ function ConfidenceSummary({
 
   return (
     <div className="rounded-lg border border-border bg-background p-4">
-      <h3 className="mb-3 text-sm font-semibold">Confidence / Disagreement Summary</h3>
+      <h3 className="mb-3 text-sm font-semibold">Confidence Assessment</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Confidence
           </div>
+          <div className="font-mono text-2xl font-semibold text-primary">{asPercent(result.confidence_score)}</div>
+        </div>
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+            Agreement
+          </div>
+          <div className="font-mono text-2xl font-semibold text-primary">{asPercent(result.agreement_score)}</div>
+        </div>
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
+            Why Confidence Is Not Higher
+          </div>
           <p
             className="overflow-hidden text-sm leading-6 text-foreground"
             style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
           >
-            {getConfidenceInterpretation(result)}
+            {getConfidenceLimiters(result, question)[0]}
           </p>
         </div>
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
-            Key Disagreement
+            Primary Disagreement
           </div>
           <p
             className="overflow-hidden text-sm leading-6 text-foreground"
@@ -926,99 +922,47 @@ function SummaryList({
   );
 }
 
-function ReasoningBreakdown({ result }: { result: AnalyzeResponse }) {
-  const [openStep, setOpenStep] = useState("Consensus Judge");
-  const risk = getAgent(result, "Risk Analyst Agent");
-  const evidence = getAgent(result, "Evidence Analyst Agent");
-  const alternatives = getAgent(result, "Alternative Solutions Agent");
-  const steps = [
-    {
-      label: "Planner",
-      value: getPlannerSummary(result),
-      refs: result.sources.map((source) => source.citation_id),
-    },
-    {
-      label: "Risk Analyst",
-      value: risk?.conclusion ?? "No risk analyst output returned.",
-      refs: risk?.evidence_refs ?? [],
-    },
-    {
-      label: "Evidence Analyst",
-      value: evidence?.conclusion ?? "No evidence analyst output returned.",
-      refs: evidence?.evidence_refs ?? [],
-    },
-    {
-      label: "Alternative Solutions Analyst",
-      value: alternatives?.conclusion ?? "No alternatives analyst output returned.",
-      refs: alternatives?.evidence_refs ?? [],
-    },
-    {
-      label: "Consensus Judge",
-      value: getConsensusJudgeSummary(result),
-      refs: result.sources.map((source) => source.citation_id),
-    },
-  ];
-
+function RetrievedEvidence({
+  result,
+  query,
+  retrievalLatency,
+  openSourceId,
+  onToggleSource,
+}: {
+  result: AnalyzeResponse;
+  query: string;
+  retrievalLatency?: number;
+  openSourceId: string | null;
+  onToggleSource: (citationId: string) => void;
+}) {
   return (
-    <div className="rounded-lg border border-border bg-background p-4">
-      <h3 className="mb-3 text-sm font-semibold">How Consensus Was Reached</h3>
-      <div className="space-y-2">
-        {steps.map((step) => (
-          <ReasoningStep
-            key={step.label}
-            label={step.label}
-            value={step.value}
-            refs={step.refs}
-            isOpen={openStep === step.label}
-            onToggle={() => setOpenStep((current) => (current === step.label ? "" : step.label))}
+    <section className="rounded-lg border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Retrieved Evidence</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Citation-grounded sources returned through the Foundry IQ retrieval interface.
+          </p>
+        </div>
+        <Badge tone="muted">Foundry IQ Retrieval</Badge>
+      </div>
+      <RetrievalTrace
+        result={result}
+        query={query}
+        retrievalLatency={retrievalLatency}
+      />
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        {result.sources.map((source) => (
+          <EvidenceCard
+            key={source.citation_id}
+            source={source}
+            result={result}
+            isOpen={openSourceId === source.citation_id}
+            onToggle={() => onToggleSource(source.citation_id)}
           />
         ))}
       </div>
-    </div>
-  );
-}
-
-function ReasoningStep({
-  label,
-  value,
-  refs = [],
-  isOpen,
-  onToggle,
-}: {
-  label: string;
-  value: string;
-  refs?: string[];
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="rounded-md border border-border bg-card">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full p-3 text-left"
-        aria-expanded={isOpen}
-      >
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
-            <span className="text-xs font-semibold uppercase text-muted-foreground">{label}</span>
-          </div>
-          {refs.length ? <CitationChips refs={refs} /> : null}
-        </div>
-        <p
-          className="overflow-hidden text-sm leading-6 text-foreground"
-          style={{ display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}
-        >
-          {firstSentence(value)}
-        </p>
-      </button>
-      {isOpen ? (
-        <div className="border-t border-border px-3 py-3">
-          <p className="text-sm leading-6 text-foreground">{value}</p>
-        </div>
-      ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -1144,10 +1088,6 @@ function EvidenceCard({
               >
                 {source.url}
               </a>
-            ) : source.url ? (
-              <div className="break-all font-mono text-xs text-muted-foreground">
-                {source.url}
-              </div>
             ) : null}
           </div>
         </div>
@@ -1218,7 +1158,7 @@ function RunMetadata({ timing }: { timing: ReturnType<typeof getDisplayedTiming>
         <div>
           <div className="text-sm font-semibold">Run Metadata</div>
           <div className="mt-1 text-xs text-muted-foreground">
-            Total {timing.total}ms · Retrieval {timing.retrieval}ms
+            Total {timing.total}ms / Retrieval {timing.retrieval}ms
           </div>
         </div>
         <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
