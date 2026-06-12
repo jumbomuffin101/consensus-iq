@@ -1,5 +1,9 @@
 from abc import ABC, abstractmethod
+import logging
 from typing import Any
+
+
+logger = logging.getLogger("consensus_iq.llm")
 
 
 class LLMProviderError(RuntimeError):
@@ -49,7 +53,13 @@ class ResilientLLMProvider(BaseLLMProvider):
                 user_prompt=user_prompt,
                 fallback=fallback,
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "LLM provider %s failed; falling back to %s: %s",
+                self.primary.name,
+                self.fallback_provider.name,
+                exc,
+            )
             return self.fallback_provider.complete_json(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,

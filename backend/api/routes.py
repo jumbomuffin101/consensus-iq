@@ -1,6 +1,10 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from llm.factory import create_llm_provider
 from models.reasoning import (
     AgentOutput,
     Disagreement,
@@ -8,6 +12,7 @@ from models.reasoning import (
     RetrievedContext,
 )
 from reasoning.graph import analyze_question
+from retrieval.factory import create_retrieval_provider
 
 router = APIRouter()
 
@@ -28,6 +33,13 @@ class AnalyzeResponse(BaseModel):
     metadata: ExecutionMetadata | None = None
 
 
+class ProviderStatusResponse(BaseModel):
+    llm_provider: str
+    retrieval_provider: str
+    openrouter_configured: bool
+    azure_search_configured: bool
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     state = analyze_question(request.question)
@@ -42,3 +54,44 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         sources=state.retrieved_context,
         metadata=state.metadata,
     )
+
+
+@router.get("/provider-status", response_model=ProviderStatusResponse)
+async def provider_status() -> ProviderStatusResponse:
+    load_dotenv()
+    openrouter_configured = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+    azure_search_configured = all(
+        os.getenv(name, "").strip()
+        for name in [
+            "AZURE_SEARCH_ENDPOINT",
+            "AZURE_SEARCH_API_KEY",
+            "AZURE_SEARCH_INDEX_NAME",
+        ]
+    )
+
+    llm_provider = _display_llm_provider(create_llm_provider().name)
+    retrieval_provider = _display_retrieval_provider(create_retrieval_provider().name)
+    return ProviderStatusResponse(
+        llm_provider=llm_provider,
+        retrieval_provider=retrieval_provider,
+        openrouter_configured=openrouter_configured,
+        azure_search_configured=azure_search_configured,
+    )
+
+
+def _display_llm_provider(provider_name: str) -> str:
+    normalized = provider_name.lower()
+    if "azure" in normalized:
+        return "AzureOpenAI"
+    if "openrouter" in normalized:
+        return "OpenRouter"
+    return "Mock"
+
+
+def _display_retrieval_provider(provider_name: str) -> str:
+    normalized = provider_name.lower()
+    if "azure" in normalized:
+        return "Azure AI Search"
+    if normalized.startswith("foundry"):
+        return "Foundry IQ"
+    return "Mock"

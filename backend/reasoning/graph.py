@@ -31,6 +31,7 @@ class ConsensusReasoningGraph:
 
     def __init__(self, provider: BaseLLMProvider | None = None) -> None:
         self.provider = provider or create_llm_provider()
+        logger.info("Active LLM provider for analysis graph: %s", self.provider.name)
         self.retrieval_node = RetrievalNode()
         self.planner_node = PlannerNode(self.provider)
         self.specialist_nodes = [
@@ -100,7 +101,8 @@ class ConsensusReasoningGraph:
 
         with ThreadPoolExecutor(max_workers=len(self.specialist_nodes)) as executor:
             future_to_node = {
-                executor.submit(node, state): node for node in self.specialist_nodes
+                executor.submit(self._run_specialist_node, node, state): node
+                for node in self.specialist_nodes
             }
             for future in as_completed(future_to_node):
                 node = future_to_node[future]
@@ -131,6 +133,14 @@ class ConsensusReasoningGraph:
             "agent_time_ms", elapsed_ms
         )
 
+    def _run_specialist_node(self, node: Any, state: ReasoningState) -> ReasoningState:
+        label = self._node_label(node)
+        logger.info("%s started", label)
+        start = perf_counter()
+        next_state = node(state)
+        logger.info("%s completed in %sms", label, self._elapsed_ms(start))
+        return next_state
+
     def _fallback_agent_output(self, node: Any, state: ReasoningState) -> Any | None:
         fallback_builder = getattr(node, "_fallback_output", None)
         if not callable(fallback_builder):
@@ -147,10 +157,12 @@ class ConsensusReasoningGraph:
         node: Callable[[ReasoningState], ReasoningState],
         state: ReasoningState,
     ) -> ReasoningState:
+        label = self._node_label(node, name)
+        logger.info("%s started", label)
         start = perf_counter()
         next_state = node(state)
         elapsed_ms = self._elapsed_ms(start)
-        logger.info("%s completed in %sms", name, elapsed_ms)
+        logger.info("%s completed in %sms", label, elapsed_ms)
 
         timing_field = {
             "retrieval": "retrieval_time_ms",
@@ -162,6 +174,23 @@ class ConsensusReasoningGraph:
 
     def _elapsed_ms(self, start: float) -> int:
         return int((perf_counter() - start) * 1000)
+
+    def _node_label(self, node: Any, fallback: str | None = None) -> str:
+        if isinstance(node, PlannerNode):
+            return "planner"
+        if isinstance(node, RiskAnalystNode):
+            return "risk analyst"
+        if isinstance(node, EvidenceAnalystNode):
+            return "evidence analyst"
+        if isinstance(node, AlternativesAnalystNode):
+            return "alternatives analyst"
+        if isinstance(node, ConsensusJudgeNode):
+            return "consensus judge"
+        if fallback == "retrieval":
+            return "retrieval"
+        if fallback == "specialists_parallel":
+            return "specialist agents"
+        return fallback or node.__class__.__name__
 
 
 def analyze_question(question: str) -> ReasoningState:

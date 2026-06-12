@@ -1,10 +1,14 @@
 import json
+import logging
 import time
 import urllib.error
 import urllib.request
 from typing import Any
 
 from llm.base import BaseLLMProvider, LLMProviderError
+
+
+logger = logging.getLogger("consensus_iq.llm")
 
 
 class OpenRouterProvider(BaseLLMProvider):
@@ -19,8 +23,8 @@ class OpenRouterProvider(BaseLLMProvider):
         model: str,
         base_url: str = "https://openrouter.ai/api/v1",
         app_name: str = "ConsensusIQ",
-        timeout_seconds: float = 25.0,
-        max_retries: int = 2,
+        timeout_seconds: float = 15.0,
+        max_retries: int = 0,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -40,12 +44,26 @@ class OpenRouterProvider(BaseLLMProvider):
 
         for attempt in range(self.max_retries + 1):
             try:
+                logger.info(
+                    "OpenRouter request started model=%s attempt=%s timeout=%ss",
+                    self.model,
+                    attempt + 1,
+                    self.timeout_seconds,
+                )
                 payload = self._build_payload(system_prompt, user_prompt)
                 body = self._send(payload)
                 content = self._extract_message_content(self._decode_json(body))
-                return self._parse_json(content)
+                parsed = self._parse_json(content)
+                logger.info("OpenRouter request completed model=%s", self.model)
+                return parsed
             except Exception as exc:
                 last_error = exc
+                logger.warning(
+                    "OpenRouter request failed model=%s attempt=%s: %s",
+                    self.model,
+                    attempt + 1,
+                    exc,
+                )
                 if attempt < self.max_retries:
                     time.sleep(0.5 * (attempt + 1))
 
@@ -89,7 +107,7 @@ class OpenRouterProvider(BaseLLMProvider):
             ) as response:
                 return response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
+            detail = exc.read().decode("utf-8", errors="ignore")[:500]
             raise LLMProviderError(
                 f"OpenRouter request failed with status {exc.code}: {detail}"
             ) from exc
