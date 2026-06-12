@@ -20,7 +20,7 @@ class RetrievedContext(BaseModel):
     citation_id: str
     retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def default_id_from_citation(cls, values: dict) -> dict:
         if not values.get("id"):
             values["id"] = values.get("citation_id", "")
