@@ -74,12 +74,12 @@ const progressSteps = [
 ];
 
 function asPercent(value: number) {
-  if (!Number.isFinite(value)) return "Not scored";
+  if (!Number.isFinite(value)) return "0%";
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
-function resultScoreLabel(result: AnalyzeResponse, value: number) {
-  return result.agent_outputs.length ? asPercent(value) : "Not scored";
+function resultScoreLabel(value: number) {
+  return asPercent(value);
 }
 
 function asTitleCase(value: string) {
@@ -178,7 +178,9 @@ function getConfidenceCalculation(result: AnalyzeResponse, question: string) {
   ].filter(Boolean) as string[];
 
   return {
-    positiveFactors: positiveFactors.length ? positiveFactors : ["Grounded sources available"],
+    positiveFactors: positiveFactors.length
+      ? positiveFactors
+      : [result.sources.length ? "Grounded sources available" : "General decision-support reasoning available"],
     negativeFactors: negativeFactors.length ? negativeFactors : ["No major confidence penalties detected"],
   };
 }
@@ -285,7 +287,7 @@ function getUsedSourceRefs(result: AnalyzeResponse) {
 function getEvidenceCoverageLabel(result: AnalyzeResponse) {
   if (!result.sources.length) return "No strong retrieved evidence found";
   const averageRelevance = getAverageRelevance(result);
-  if (averageRelevance < 0.55) return "Limited evidence coverage";
+  if (averageRelevance < 0.55) return "Limited evidence coverage for this prompt";
   return "Evidence coverage available";
 }
 
@@ -527,7 +529,7 @@ function DisagreementsPanel({ result }: { result: AnalyzeResponse | null }) {
   }, [result]);
 
   return (
-    <div className="rounded-lg border border-border bg-background p-4">
+    <div className="h-fit rounded-lg border border-border bg-background p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Disagreements</h3>
@@ -554,7 +556,7 @@ function DisagreementsPanel({ result }: { result: AnalyzeResponse | null }) {
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <AlertTriangle className="h-4 w-4 shrink-0 text-amber-200" />
-                      <h4 className="truncate text-sm font-semibold">{item.topic}</h4>
+                      <h4 className="text-sm font-semibold">{item.topic}</h4>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warning" : "muted"}>
@@ -782,7 +784,7 @@ export function ConsensusWorkbench() {
         </section>
 
         {result ? (
-          <section className="grid gap-6 lg:grid-cols-2">
+          <section className={`grid gap-6 ${result.agent_outputs.length ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}>
             {result.agent_outputs.length ? <AgentPerspectives result={result} /> : null}
             <DisagreementsPanel result={result} />
           </section>
@@ -834,8 +836,8 @@ function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
         </Badge>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Metric label="Confidence" value={resultScoreLabel(result, result.confidence_score)} />
-        <Metric label="Agreement" value={resultScoreLabel(result, result.agreement_score)} />
+        <Metric label="Confidence" value={resultScoreLabel(result.confidence_score)} />
+        <Metric label="Agreement" value={resultScoreLabel(result.agreement_score)} />
       </div>
     </div>
   );
@@ -890,13 +892,13 @@ function ConfidenceSummary({
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Confidence
           </div>
-          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result, result.confidence_score)}</div>
+          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result.confidence_score)}</div>
         </div>
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Agreement
           </div>
-          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result, result.agreement_score)}</div>
+          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result.agreement_score)}</div>
         </div>
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">

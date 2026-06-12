@@ -156,10 +156,11 @@ class RiskAnalystNode:
                     ],
                 }
         else:
+            topic = state.question.strip().rstrip("?.!")
             domain_content = {
-                "recommendation": "Treat the decision as conditional until risk owners and failure criteria are explicit.",
+                "recommendation": f"Treat the question '{topic}' as conditional until risk owners and failure criteria are explicit.",
                 "conclusion": (
-                    "The main risk is overcommitting before the decision criteria, downside exposure, and reversal plan are clear."
+                    f"The main risk is overcommitting on '{topic}' before the decision criteria, downside exposure, and reversal plan are clear."
                 ),
                 "rationale": [
                     f"{refs[0] if refs else 'S1'} provides the strongest available context.",

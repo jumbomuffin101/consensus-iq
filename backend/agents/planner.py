@@ -209,28 +209,29 @@ class PlannerNode:
                 ),
             ]
 
+        topic = question.strip().rstrip("?.!")
         return [
             ReasoningTask(
                 id="task-1",
-                description="Identify the decision objective and diagnostic priorities.",
+                description=f"Identify the decision objective and success criteria for: {topic}.",
                 owner="Evidence Analyst Agent",
                 priority="high",
             ),
             ReasoningTask(
                 id="task-2",
-                description="Evaluate risks, limitations, and failure modes.",
+                description=f"Evaluate risks, limitations, and failure modes for: {topic}.",
                 owner="Risk Analyst Agent",
                 priority="high",
             ),
             ReasoningTask(
                 id="task-3",
-                description="Review supporting evidence and rationale.",
+                description=f"Review supporting evidence and rationale relevant to: {topic}.",
                 owner="Evidence Analyst Agent",
                 priority="high",
             ),
             ReasoningTask(
                 id="task-4",
-                description="Identify alternative interpretations and approaches.",
+                description=f"Identify alternative interpretations and approaches for: {topic}.",
                 owner="Alternative Solutions Agent",
                 priority="medium",
             ),

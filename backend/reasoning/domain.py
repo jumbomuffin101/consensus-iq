@@ -115,7 +115,7 @@ def classify_domain(question: str) -> str:
         for domain, keywords in DOMAIN_KEYWORDS.items()
     }
     best_domain, best_score = max(scores.items(), key=lambda item: item[1])
-    if best_score == 0:
+    if best_score < 2:
         return "custom"
     return best_domain
 

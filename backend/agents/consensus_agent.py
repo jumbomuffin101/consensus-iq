@@ -32,21 +32,40 @@ class ConsensusJudgeNode:
         profile = build_domain_profile(state)
         missing_penalty = missing_information_load(state)
         injection_penalty = prompt_injection_risk(state.question)
+        source_count = len(state.retrieved_context)
+        source_count_bonus = min(0.08, source_count * 0.025)
+        weak_evidence_penalty = 0.08 if state.retrieved_context and profile.evidence_quality < 0.55 else 0.0
+        custom_weak_penalty = (
+            0.06
+            if profile.domain == "custom" and profile.evidence_quality < 0.7
+            else 0.0
+        )
+        disagreement_penalty = min(0.14, len(disagreements) * 0.025)
         avg_confidence = (
             sum(output.confidence_score for output in state.agent_outputs)
             / len(state.agent_outputs)
             if state.agent_outputs
             else 0.0
         )
+        confidence_values = [output.confidence_score for output in state.agent_outputs]
+        confidence_spread = (
+            max(confidence_values) - min(confidence_values)
+            if confidence_values
+            else 0.3
+        )
         raw_confidence = (
             (avg_confidence * 0.38)
             + (agreement_score * 0.3)
             + (profile.evidence_quality * 0.24)
             + (profile.source_certainty * 0.1)
+            + source_count_bonus
             - (profile.ambiguity * 0.18)
             - (profile.risk_level * 0.08)
+            - (confidence_spread * 0.08)
             - (0.12 if not state.retrieved_context else 0)
-            - (0.06 if state.retrieved_context and profile.evidence_quality < 0.55 else 0)
+            - weak_evidence_penalty
+            - custom_weak_penalty
+            - disagreement_penalty
             - missing_penalty
             - injection_penalty
         )
@@ -144,7 +163,7 @@ class ConsensusJudgeNode:
         elif domain == "finance":
             recommendation = "avoid putting all savings into one AI stock and prefer diversified, liquidity-aware investing"
         else:
-            recommendation = "make the decision conditional on the strongest cited evidence and unresolved risks"
+            recommendation = self._custom_recommendation(state.question)
 
         uncertainty_note = ""
         if prompt_injection_risk(state.question):
@@ -167,6 +186,14 @@ class ConsensusJudgeNode:
             + " ".join(clauses)
             + uncertainty_note
             + grounding_note
+        )
+
+    def _custom_recommendation(self, question: str) -> str:
+        topic = question.strip().rstrip("?.!")
+        return (
+            f"evaluate this custom proposal: '{topic or 'this proposal'}' as a conditional decision: clarify the goal, "
+            "expected benefits, participants or stakeholders, downside risks, and a "
+            "small reversible trial before making a broad commitment"
         )
 
     def _build_reasoning_summary(

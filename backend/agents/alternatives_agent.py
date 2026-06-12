@@ -130,10 +130,11 @@ class AlternativesAnalystNode:
                     "missing": ["Data classification scheme and approved secure AI tooling options."],
                 }
         else:
+            topic = state.question.strip().rstrip("?.!")
             domain_content = {
-                "recommendation": "Compare at least one conservative, one reversible, and one high-commitment option before deciding.",
+                "recommendation": f"Compare conservative, reversible, and high-commitment options for '{topic}' before deciding.",
                 "conclusion": (
-                    "A custom question should not inherit a preset recommendation; the alternatives should be derived from the user's decision constraints."
+                    f"This custom question should not inherit a preset recommendation; alternatives for '{topic}' should come from the user's constraints."
                 ),
                 "rationale": [
                     f"{refs[0] if refs else 'S2'} supports checkpointed alternatives.",

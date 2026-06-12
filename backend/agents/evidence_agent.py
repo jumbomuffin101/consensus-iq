@@ -137,10 +137,11 @@ class EvidenceAnalystNode:
                     "missing": ["Current client contract language and vendor data-retention guarantees."],
                 }
         else:
+            topic = state.question.strip().rstrip("?.!")
             domain_content = {
-                "recommendation": "Use the retrieved context to define criteria before making a broad recommendation.",
+                "recommendation": f"Use the retrieved context and explicit success criteria before deciding on '{topic}'.",
                 "conclusion": (
-                    "The evidence is useful for framing the decision, but more question-specific sources would improve certainty."
+                    f"The available evidence can frame '{topic}', but more question-specific sources would improve certainty."
                 ),
                 "rationale": [
                     f"{refs[0] if refs else 'S1'} is the highest-relevance retrieved context.",

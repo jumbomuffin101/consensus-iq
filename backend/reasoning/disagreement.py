@@ -12,16 +12,34 @@ class DisagreementDetector:
 
     def detect(self, outputs: list[AgentOutput]) -> list[Disagreement]:
         disagreements: list[Disagreement] = []
+        if not outputs:
+            return [
+                Disagreement(
+                    topic="Decision uncertainty",
+                    kind="missing_evidence",
+                    severity="medium",
+                    positions=[
+                        "No specialist agent outputs were available for comparison."
+                    ],
+                    suggested_resolution=(
+                        "Rerun the analysis and treat any recommendation as unscored "
+                        "until specialist perspectives are available."
+                    ),
+                )
+            ]
+
         disagreements.extend(self._detect_conflicting_recommendations(outputs))
         confidence_gap = self._detect_confidence_gap(outputs)
         if confidence_gap:
             disagreements.append(confidence_gap)
         disagreements.extend(self._detect_missing_evidence(outputs))
+        if not disagreements:
+            disagreements.append(self._build_decision_uncertainty(outputs))
         return disagreements
 
     def calculate_agreement_score(self, outputs: list[AgentOutput]) -> float:
         if not outputs:
-            return 0.0
+            return 0.25
 
         disagreements = self.detect(outputs)
         similarities = [
@@ -38,6 +56,7 @@ class DisagreementDetector:
             {"low": 0.04, "medium": 0.08, "high": 0.18}[item.severity]
             for item in disagreements
         )
+        disagreement_count_penalty = min(0.16, len(disagreements) * 0.035)
         raw_score = (
             0.34
             + (semantic_alignment * 0.24)
@@ -46,9 +65,10 @@ class DisagreementDetector:
             + self._domain_alignment_bonus(outputs)
             - (confidence_spread * 0.22)
             - severity_penalty
+            - disagreement_count_penalty
             - self._major_concern_penalty(outputs)
         )
-        return round(max(0.05, min(0.98, raw_score)), 2)
+        return round(max(0.18, min(0.92, raw_score)), 2)
 
     def _detect_conflicting_recommendations(
         self, outputs: list[AgentOutput]
@@ -131,11 +151,41 @@ class DisagreementDetector:
                 severity="medium" if len(positions) > 2 else "low",
                 positions=positions,
                 suggested_resolution=(
-                    "Request additional Foundry IQ retrieval or lower confidence "
+                    "Request additional Microsoft retrieval or lower confidence "
                     "until missing evidence is resolved."
                 ),
             )
         ]
+
+    def _build_decision_uncertainty(self, outputs: list[AgentOutput]) -> Disagreement:
+        confidence_values = [output.confidence_score for output in outputs]
+        average_confidence = sum(confidence_values) / len(confidence_values)
+        evidence_refs = sorted(
+            {
+                ref
+                for output in outputs
+                for ref in output.evidence_refs
+            }
+        )
+        positions = [
+            f"Average specialist confidence: {average_confidence:.2f}",
+            (
+                f"Evidence referenced by agents: {', '.join(evidence_refs)}"
+                if evidence_refs
+                else "No retrieved evidence references were cited by specialists."
+            ),
+            "No direct recommendation conflict was detected, but assumptions still require review.",
+        ]
+        return Disagreement(
+            topic="Decision uncertainty",
+            kind="missing_evidence",
+            severity="low",
+            positions=positions,
+            suggested_resolution=(
+                "Proceed only with the stated conditions, and verify local facts, "
+                "policy constraints, or domain-specific assumptions before acting."
+            ),
+        )
 
     def _recommendation_group(self, recommendation: str) -> str:
         normalized = recommendation.lower()
