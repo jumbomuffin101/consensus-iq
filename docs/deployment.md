@@ -19,6 +19,13 @@ Optional Azure OpenAI:
 - `AZURE_OPENAI_DEPLOYMENT`
 - `AZURE_OPENAI_API_VERSION`
 
+Optional OpenRouter:
+
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_MODEL`
+- `OPENROUTER_BASE_URL`
+- `OPENROUTER_APP_NAME`
+
 Optional Azure AI Search / Foundry IQ Search Service:
 
 - `AZURE_SEARCH_ENDPOINT`
@@ -33,7 +40,9 @@ Optional Foundry IQ:
 - `FOUNDRY_IQ_INDEX_NAME`
 - `FOUNDRY_IQ_API_VERSION`
 
-If Azure OpenAI, Azure AI Search, or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is clearly labeled as the Foundry IQ-Compatible Demo Corpus.
+LLM provider priority is Azure OpenAI, then OpenRouter, then deterministic mock fallback. Retrieval provider priority is Azure AI Search, then Foundry IQ, then the local demo corpus.
+
+If Azure OpenAI, OpenRouter, Azure AI Search, or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is clearly labeled as the Foundry IQ-Compatible Demo Corpus.
 
 ### Frontend
 
@@ -108,7 +117,7 @@ Recommended backend targets:
 Recommended settings:
 
 - Configure `FRONTEND_ORIGIN` to the deployed Vercel or Azure frontend URL.
-- Store `AZURE_OPENAI_API_KEY` and `FOUNDRY_IQ_API_KEY` as secrets.
+- Store `AZURE_OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `AZURE_SEARCH_API_KEY`, and `FOUNDRY_IQ_API_KEY` as secrets.
 - Use `/health` as the health probe path.
 - Keep local fallback providers enabled for demo reliability.
 

@@ -17,7 +17,7 @@ High-stakes decisions often depend on incomplete evidence, competing interpretat
 
 ## Solution Overview
 
-ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, detects the decision scenario, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with dynamic confidence and agreement scores. The app is reliable for demos because Azure OpenAI and Microsoft retrieval integrations both have fallback providers.
+ConsensusIQ turns one user question into a structured multi-agent review. It retrieves citation-ready context, detects the decision scenario, asks specialist agents to reason independently, detects disagreement, and produces a final consensus report with dynamic confidence and agreement scores. The app is reliable for demos because Azure OpenAI, OpenRouter, and Microsoft retrieval integrations all have fallback providers.
 
 ## Why ConsensusIQ
 
@@ -72,7 +72,7 @@ User Question
 - Azure AI Search / Foundry IQ Search Service provider with configurable endpoint, API key, index name, API version, request payload builder, and response parser.
 - Microsoft Foundry IQ HTTP provider boundary for future native Knowledge Base integration.
 - Domain-specific curated public evidence sources for clinical, cybersecurity, research, enterprise, finance, and custom prompts.
-- Azure OpenAI-ready LLM provider with retries, timeouts, and mock fallback.
+- Azure OpenAI and OpenRouter-ready LLM providers with retries, timeouts, JSON extraction, and mock fallback.
 - Parallel specialist agent execution.
 - Structured disagreement detection.
 - Prompt-specific confidence and agreement scoring.
@@ -85,7 +85,7 @@ User Question
 - **Frontend:** Next.js 15, TypeScript, Tailwind CSS, shadcn-style local UI primitives
 - **Backend:** Python 3.12, FastAPI, Pydantic
 - **Reasoning:** LangGraph-ready graph orchestration with deterministic local fallback
-- **LLM:** Azure OpenAI provider abstraction with mock fallback
+- **LLM:** Azure OpenAI and OpenRouter provider abstraction with mock fallback
 - **Retrieval:** Azure AI Search and Foundry IQ provider abstraction with curated public corpus fallback
 
 ## Setup Instructions
@@ -118,6 +118,17 @@ AZURE_OPENAI_API_KEY=your-key
 AZURE_OPENAI_DEPLOYMENT=your-deployment-name
 AZURE_OPENAI_API_VERSION=2024-10-21
 ```
+
+Optional OpenRouter support:
+
+```bash
+OPENROUTER_API_KEY=your-openrouter-key
+OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_APP_NAME=ConsensusIQ
+```
+
+ConsensusIQ uses Azure AI Search / Foundry IQ Search Service for retrieval and OpenRouter-backed LLM calls for planner, specialist agent, and consensus judge reasoning when OpenRouter is configured and Azure OpenAI is not fully configured. OpenRouter responses are requested as JSON and validated against the same Pydantic schemas as Azure and mock outputs.
 
 Optional Azure AI Search / Foundry IQ Search Service retrieval:
 
@@ -154,7 +165,13 @@ Retrieval provider priority is:
 2. `FOUNDRY_IQ_*` native Foundry IQ provider.
 3. `Foundry IQ-Compatible Demo Corpus` local fallback.
 
-If Azure OpenAI, Azure Search, or Foundry IQ is unavailable, ConsensusIQ falls back to local providers and still returns a complete report.
+LLM provider priority is:
+
+1. `AZURE_OPENAI_*` Azure OpenAI provider.
+2. `OPENROUTER_*` OpenRouter provider.
+3. Deterministic mock fallback.
+
+If Azure OpenAI, OpenRouter, Azure Search, or Foundry IQ is unavailable, ConsensusIQ falls back to local providers and still returns a complete report.
 
 ### Frontend
 
@@ -248,7 +265,7 @@ Returns:
 
 - Public disclaimer is shown in the app and README.
 - No secrets are committed; credentials belong only in local `.env` files.
-- Azure OpenAI failures fall back to deterministic mock reasoning.
+- Azure OpenAI and OpenRouter failures fall back to deterministic mock reasoning.
 - Foundry IQ failures fall back to clearly marked curated public corpus sources.
 - Source citations are visible so judges can inspect grounding.
 - No authentication or database is required for the local demo.
@@ -258,12 +275,12 @@ Returns:
 - Frontend production build passed with `npm run build`.
 - Backend `/analyze` was smoke tested through FastAPI.
 - Azure credentials are not committed.
-- Local fallback providers allow a reliable demo even without Azure OpenAI or Foundry IQ credentials.
+- Local fallback providers allow a reliable demo even without Azure OpenAI, OpenRouter, or Foundry IQ credentials.
 
 ## Future Roadmap
 
 - Connect to a live Foundry IQ project and tune response normalization.
-- Use Azure OpenAI deployments for all agent roles in production mode.
+- Use Azure OpenAI or OpenRouter models for all agent roles in production mode.
 - Add streaming graph updates for live agent progress.
 - Add more specialist agents for domain-specific review.
 - Add exportable consensus reports for judges, reviewers, or decision teams.

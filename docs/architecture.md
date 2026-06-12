@@ -5,7 +5,7 @@
 ConsensusIQ is a multi-agent reasoning platform for transparent, evidence-based
 consensus decisions. Retrieval is provider-based for Azure AI Search / Foundry IQ
 Search Service, native Microsoft Foundry IQ, and a curated public corpus
-fallback. Agents are provider-based for Azure OpenAI with mock fallback.
+fallback. Agents are provider-based for Azure OpenAI, OpenRouter, and mock fallback.
 
 ## Shared State
 
@@ -49,9 +49,10 @@ Agents receive an injected provider from `backend/llm`.
 - `llm/base.py`: provider contract and resilient fallback wrapper.
 - `llm/azure_openai.py`: Azure OpenAI JSON completion provider with retries and
   request timeout.
+- `llm/openrouter.py`: OpenRouter Chat Completions provider with retries,
+  request timeout, JSON-only prompting, and JSON extraction for fenced responses.
 - `llm/mock.py`: deterministic fallback provider.
-- `llm/factory.py`: reads `AZURE_OPENAI_*` environment variables and chooses the
-  provider.
+- `llm/factory.py`: chooses Azure OpenAI first, then OpenRouter, then mock.
 
 Specialist agents run concurrently after planning. Each receives the question,
 retrieved context, and planner tasks, and returns a validated `AgentOutput`.
