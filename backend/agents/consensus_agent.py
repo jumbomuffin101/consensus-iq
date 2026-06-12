@@ -38,16 +38,21 @@ class ConsensusJudgeNode:
             if state.agent_outputs
             else 0.0
         )
-        confidence_score = bounded_score(
+        raw_confidence = (
             (avg_confidence * 0.38)
             + (agreement_score * 0.3)
             + (profile.evidence_quality * 0.24)
             + (profile.source_certainty * 0.1)
             - (profile.ambiguity * 0.18)
             - (profile.risk_level * 0.08)
+            - (0.12 if not state.retrieved_context else 0)
+            - (0.06 if state.retrieved_context and profile.evidence_quality < 0.55 else 0)
             - missing_penalty
             - injection_penalty
         )
+        if not state.retrieved_context:
+            raw_confidence = max(raw_confidence, 0.18)
+        confidence_score = bounded_score(raw_confidence)
 
         state_with_disagreements = state.copy(update={"disagreements": disagreements})
         fallback_judgment = ConsensusJudgment(
@@ -145,11 +150,23 @@ class ConsensusJudgeNode:
         if prompt_injection_risk(state.question):
             uncertainty_note = " The request for certainty is treated as a reliability risk, so the answer preserves uncertainty rather than claiming 100% confidence."
 
+        if not state.retrieved_context:
+            grounding_note = (
+                " No strong retrieved evidence was found, so the final recommendation is decision-support reasoning with explicit evidence gaps rather than source-grounded certainty."
+            )
+        else:
+            average_relevance = sum(item.relevance_score for item in state.retrieved_context) / len(state.retrieved_context)
+            grounding_note = (
+                " Retrieved evidence coverage is limited, so confidence is reduced and the recommendation should be verified with better source coverage."
+                if average_relevance < 0.55
+                else " The final recommendation is grounded in the cited retrieved sources and preserves the main disagreement points."
+            )
+
         return (
             f"{domain_opening}: {recommendation}. "
             + " ".join(clauses)
             + uncertainty_note
-            + " The final recommendation is grounded in the cited retrieved sources and preserves the main disagreement points."
+            + grounding_note
         )
 
     def _build_reasoning_summary(

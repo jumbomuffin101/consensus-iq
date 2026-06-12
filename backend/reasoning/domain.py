@@ -123,7 +123,7 @@ def classify_domain(question: str) -> str:
 def build_domain_profile(state: ReasoningState) -> DomainProfile:
     domain = classify_domain(state.question)
     evidence_quality = _average(
-        [source.relevance_score for source in state.retrieved_context], default=0.55
+        [source.relevance_score for source in state.retrieved_context], default=0.2
     )
     source_certainty = min(1.0, evidence_quality + (len(state.retrieved_context) * 0.04))
     ambiguity = _question_ambiguity(state.question, domain)

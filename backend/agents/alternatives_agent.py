@@ -141,11 +141,22 @@ class AlternativesAnalystNode:
                 ],
                 "missing": ["Available options, constraints, and stakeholder tolerance for risk."],
             }
+        if not refs:
+            domain_content["rationale"] = [
+                "No strong retrieved evidence was available for this prompt.",
+                "Alternative analysis remains useful, but options should be validated against better source coverage before acting.",
+            ]
+            domain_content["missing"] = [
+                "No strong retrieved evidence found.",
+                *domain_content["missing"],
+            ]
+
         confidence = bounded_score(
             0.36
             + (profile.evidence_quality * 0.32)
             - (profile.ambiguity * 0.1)
             + (0.06 if profile.domain != "custom" else 0)
+            - (0.1 if not refs else 0)
             - (prompt_injection_risk(state.question) * 0.75)
         )
         return AgentOutput(

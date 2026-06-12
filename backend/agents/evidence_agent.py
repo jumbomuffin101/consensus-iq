@@ -148,12 +148,23 @@ class EvidenceAnalystNode:
                 ],
                 "missing": ["More domain-specific citations and explicit success metrics."],
             }
+        if not refs:
+            domain_content["rationale"] = [
+                "No strong retrieved evidence was available for this prompt.",
+                "Evidence analysis can only identify what would need to be verified before treating the recommendation as grounded.",
+            ]
+            domain_content["missing"] = [
+                "No strong retrieved evidence found.",
+                *domain_content["missing"],
+            ]
+
         confidence = bounded_score(
             0.4
             + (profile.evidence_quality * 0.45)
             + (len(refs) * 0.025)
             - (profile.ambiguity * 0.12)
             - (profile.risk_level * 0.04)
+            - (0.14 if not refs else 0)
             - prompt_injection_risk(state.question)
         )
         return AgentOutput(

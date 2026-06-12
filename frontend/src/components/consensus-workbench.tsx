@@ -74,7 +74,12 @@ const progressSteps = [
 ];
 
 function asPercent(value: number) {
-  return `${Math.round(value * 100)}%`;
+  if (!Number.isFinite(value)) return "Not scored";
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
+function resultScoreLabel(result: AnalyzeResponse, value: number) {
+  return result.agent_outputs.length ? asPercent(value) : "Not scored";
 }
 
 function asTitleCase(value: string) {
@@ -104,11 +109,13 @@ function getConfidenceFactors(result: AnalyzeResponse, question: string) {
   const highRiskDomain = ["Clinical", "Cybersecurity", "Finance"].includes(result.scenario_label);
 
   const factors = [
-    averageRelevance >= 0.85
+    result.sources.length === 0
+      ? "No strong retrieved evidence found"
+      : averageRelevance >= 0.85
       ? "High source relevance supports stronger grounding"
       : averageRelevance >= 0.7
         ? "Moderate source relevance leaves some uncertainty"
-        : "Lower source relevance reduces confidence",
+        : "Limited evidence coverage reduced confidence",
     result.agreement_score >= 0.7
       ? "Strong agent agreement increased confidence"
       : result.agreement_score >= 0.5
@@ -152,7 +159,7 @@ function getConfidenceCalculation(result: AnalyzeResponse, question: string) {
   const highSeverityDisagreement = result.disagreements.some((item) => item.severity === "high");
 
   const positiveFactors = [
-    averageRelevance >= 0.85 ? "Strong source relevance" : null,
+    result.sources.length > 0 && averageRelevance >= 0.85 ? "Strong source relevance" : null,
     result.sources.length >= 3 ? "Multiple supporting sources" : null,
     result.agreement_score >= 0.7 ? "Agent agreement supports the recommendation" : null,
     result.agent_outputs.every((agent) => agent.evidence_refs.length > 0)
@@ -161,6 +168,8 @@ function getConfidenceCalculation(result: AnalyzeResponse, question: string) {
   ].filter(Boolean) as string[];
 
   const negativeFactors = [
+    result.sources.length === 0 ? "No strong retrieved evidence found" : null,
+    result.sources.length > 0 && averageRelevance < 0.55 ? "Limited evidence coverage" : null,
     missingEvidenceCount > 0 ? "Missing evidence remains unresolved" : null,
     highRiskDomain ? "High-risk domain uncertainty" : null,
     result.agreement_score < 0.7 ? "Agent disagreement reduced certainty" : null,
@@ -196,7 +205,7 @@ function getAgent(result: AnalyzeResponse, name: string) {
 
 function getRecommendationSummary(result: AnalyzeResponse) {
   const [opening] = result.consensus.split("Evidence view:");
-  return opening.replace(/^[^:]+:\s*/, "").trim();
+  return capitalizeFirst(opening.replace(/^[^:]+:\s*/, "").trim());
 }
 
 function firstSentence(value: string) {
@@ -204,15 +213,22 @@ function firstSentence(value: string) {
   return (match?.[0] ?? value).trim();
 }
 
+function capitalizeFirst(value: string) {
+  const trimmed = value.trim();
+  const index = trimmed.search(/[A-Za-z]/);
+  if (index < 0) return trimmed;
+  return `${trimmed.slice(0, index)}${trimmed[index].toUpperCase()}${trimmed.slice(index + 1)}`;
+}
+
 function getDecisionSentence(result: AnalyzeResponse) {
-  return firstSentence(getRecommendationSummary(result));
+  return capitalizeFirst(firstSentence(getRecommendationSummary(result)));
 }
 
 function getRecommendedApproach(result: AnalyzeResponse) {
   const evidence = getAgent(result, "Evidence Analyst Agent");
   const alternatives = getAgent(result, "Alternative Solutions Agent");
   const recommendation = evidence?.recommendation || alternatives?.recommendation;
-  return recommendation || "Use the consensus recommendation with explicit evidence checks and review points.";
+  return capitalizeFirst(recommendation || "Use the consensus recommendation with explicit evidence checks and review points.");
 }
 
 function getAvoidWatchOut(result: AnalyzeResponse) {
@@ -221,13 +237,13 @@ function getAvoidWatchOut(result: AnalyzeResponse) {
   const disagreement = result.disagreements[0]?.topic;
 
   if (missingEvidence.length) {
-    return `Missing evidence: ${missingEvidence.slice(0, 2).join("; ")}.`;
+    return capitalizeFirst(`Missing evidence: ${missingEvidence.slice(0, 2).join("; ")}.`);
   }
   if (disagreement) {
-    return `Do not ignore unresolved disagreement around ${disagreement}.`;
+    return capitalizeFirst(`Do not ignore unresolved disagreement around ${disagreement}.`);
   }
   if (risk?.conclusion) {
-    return firstSentence(risk.conclusion);
+    return capitalizeFirst(firstSentence(risk.conclusion));
   }
   return "Avoid overconfidence; verify local constraints, policy context, and any domain-specific facts before acting.";
 }
@@ -260,7 +276,17 @@ function getUsedSourceRefs(result: AnalyzeResponse) {
   result.agent_outputs.forEach((agent) => {
     agent.evidence_refs.forEach((ref) => refs.add(ref));
   });
+  if (!refs.size && result.sources.length) {
+    result.sources.forEach((source) => refs.add(source.citation_id));
+  }
   return Array.from(refs);
+}
+
+function getEvidenceCoverageLabel(result: AnalyzeResponse) {
+  if (!result.sources.length) return "No strong retrieved evidence found";
+  const averageRelevance = getAverageRelevance(result);
+  if (averageRelevance < 0.55) return "Limited evidence coverage";
+  return "Evidence coverage available";
 }
 
 function getConfidenceLimiters(result: AnalyzeResponse, question: string) {
@@ -270,6 +296,8 @@ function getConfidenceLimiters(result: AnalyzeResponse, question: string) {
   const averageRelevance = getAverageRelevance(result);
 
   const limiters = [
+    result.sources.length === 0 ? "No strong retrieved evidence found" : null,
+    result.sources.length > 0 && averageRelevance < 0.55 ? "Limited evidence coverage" : null,
     result.disagreements.length ? "Agent disagreement remains unresolved" : null,
     missingEvidence.length ? "Evidence gaps require additional grounding" : null,
     highRiskDomain ? "High-risk domain requires conservative confidence" : null,
@@ -383,6 +411,10 @@ function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
     );
   }
 
+  if (!result?.agent_outputs.length) {
+    return null;
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -392,14 +424,14 @@ function AgentPerspectives({ result }: { result: AnalyzeResponse | null }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        {result?.agent_outputs.map((agent) => (
+        {result.agent_outputs.map((agent) => (
           <AgentAccordionCard
             key={agent.agent}
             agent={agent}
             isOpen={openAgents.includes(agent.agent)}
             onToggle={() => toggleAgent(agent.agent)}
           />
-        )) ?? <PlaceholderRows />}
+        ))}
       </CardContent>
     </Card>
   );
@@ -586,7 +618,7 @@ export function ConsensusWorkbench() {
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progressIndex, setProgressIndex] = useState(0);
-  const [openSourceId, setOpenSourceId] = useState<string | null>(null);
+  const [openSourceIds, setOpenSourceIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const domainLabel = promptDomainLabel(question);
   const displayedTiming = result ? getDisplayedTiming(result.metadata) : null;
@@ -602,7 +634,7 @@ export function ConsensusWorkbench() {
   }, [isLoading]);
 
   useEffect(() => {
-    setOpenSourceId(result?.sources[0]?.citation_id ?? null);
+    setOpenSourceIds(result?.sources[0]?.citation_id ? [result.sources[0].citation_id] : []);
   }, [result]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -749,19 +781,25 @@ export function ConsensusWorkbench() {
           </Card>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-2">
-          <AgentPerspectives result={result} />
-          <DisagreementsPanel result={result} />
-        </section>
+        {result ? (
+          <section className="grid gap-6 lg:grid-cols-2">
+            {result.agent_outputs.length ? <AgentPerspectives result={result} /> : null}
+            <DisagreementsPanel result={result} />
+          </section>
+        ) : null}
 
         {result ? (
           <RetrievedEvidence
             result={result}
             query={analyzedQuestion}
             retrievalLatency={displayedTiming?.retrieval}
-            openSourceId={openSourceId}
+            openSourceIds={openSourceIds}
             onToggleSource={(citationId) =>
-              setOpenSourceId((current) => (current === citationId ? null : citationId))
+              setOpenSourceIds((current) =>
+                current.includes(citationId)
+                  ? current.filter((id) => id !== citationId)
+                  : [...current, citationId],
+              )
             }
           />
         ) : null}
@@ -787,10 +825,7 @@ function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase text-primary">Final Recommendation</div>
-          <h3
-            className="mt-1 overflow-hidden text-xl font-semibold leading-7 text-foreground"
-            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
-          >
+          <h3 className="mt-1 text-xl font-semibold leading-7 text-foreground">
             {getDecisionSentence(result)}
           </h3>
         </div>
@@ -799,8 +834,8 @@ function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
         </Badge>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Metric label="Confidence" value={asPercent(result.confidence_score)} />
-        <Metric label="Agreement" value={asPercent(result.agreement_score)} />
+        <Metric label="Confidence" value={resultScoreLabel(result, result.confidence_score)} />
+        <Metric label="Agreement" value={resultScoreLabel(result, result.agreement_score)} />
       </div>
     </div>
   );
@@ -832,12 +867,7 @@ function RecommendationBlock({ label, value }: { label: string; value: string })
   return (
     <div className="rounded-md border border-border bg-card p-3">
       <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">{label}</div>
-      <p
-        className="overflow-hidden text-sm leading-6 text-foreground"
-        style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
-      >
-        {value}
-      </p>
+      <p className="text-sm leading-6 text-foreground">{capitalizeFirst(value)}</p>
     </div>
   );
 }
@@ -860,22 +890,19 @@ function ConfidenceSummary({
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Confidence
           </div>
-          <div className="font-mono text-2xl font-semibold text-primary">{asPercent(result.confidence_score)}</div>
+          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result, result.confidence_score)}</div>
         </div>
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Agreement
           </div>
-          <div className="font-mono text-2xl font-semibold text-primary">{asPercent(result.agreement_score)}</div>
+          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result, result.agreement_score)}</div>
         </div>
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Why Confidence Is Not Higher
           </div>
-          <p
-            className="overflow-hidden text-sm leading-6 text-foreground"
-            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
-          >
+          <p className="text-sm leading-6 text-foreground">
             {getConfidenceLimiters(result, question)[0]}
           </p>
         </div>
@@ -883,10 +910,7 @@ function ConfidenceSummary({
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Primary Disagreement
           </div>
-          <p
-            className="overflow-hidden text-sm leading-6 text-foreground"
-            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
-          >
+          <p className="text-sm leading-6 text-foreground">
             {getKeyDisagreementSummary(result)}
           </p>
         </div>
@@ -941,13 +965,13 @@ function RetrievedEvidence({
   result,
   query,
   retrievalLatency,
-  openSourceId,
+  openSourceIds,
   onToggleSource,
 }: {
   result: AnalyzeResponse;
   query: string;
   retrievalLatency?: number;
-  openSourceId: string | null;
+  openSourceIds: string[];
   onToggleSource: (citationId: string) => void;
 }) {
   return (
@@ -966,16 +990,25 @@ function RetrievedEvidence({
         query={query}
         retrievalLatency={retrievalLatency}
       />
+      <div className="mt-3 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+        {getEvidenceCoverageLabel(result)}
+      </div>
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
-        {result.sources.map((source) => (
-          <EvidenceCard
-            key={source.citation_id}
-            source={source}
-            result={result}
-            isOpen={openSourceId === source.citation_id}
-            onToggle={() => onToggleSource(source.citation_id)}
-          />
-        ))}
+        {result.sources.length ? (
+          result.sources.map((source) => (
+            <EvidenceCard
+              key={source.citation_id}
+              source={source}
+              result={result}
+              isOpen={openSourceIds.includes(source.citation_id)}
+              onToggle={() => onToggleSource(source.citation_id)}
+            />
+          ))
+        ) : (
+          <div className="rounded-lg border border-border bg-background p-4 text-sm leading-6 text-muted-foreground lg:col-span-3">
+            No strong retrieved evidence found. ConsensusIQ still runs the agents, but confidence is reduced and the recommendation should be treated as decision-support reasoning rather than source-grounded certainty.
+          </div>
+        )}
       </div>
     </section>
   );
@@ -996,7 +1029,6 @@ function RetrievalTrace({
     <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h4 className="text-sm font-semibold">Retrieval Trace</h4>
-        <Badge tone="success">{retrievalLayerLabel(result)}</Badge>
       </div>
       <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
         <TraceMetric label="Query" value={query} />
@@ -1007,9 +1039,13 @@ function RetrievalTrace({
             <CitationChips refs={usedRefs} />
           </div>
         </div>
-        <TraceMetric label="Top Relevance" value={asPercent(getTopRelevance(result))} />
-        <TraceMetric label="Average Relevance" value={asPercent(getAverageRelevance(result))} />
-        <TraceMetric label="Retrieval Latency" value={retrievalLatency ? `${retrievalLatency}ms` : "Not reported"} />
+        {result.sources.length ? (
+          <>
+            <TraceMetric label="Top Relevance" value={asPercent(getTopRelevance(result))} />
+            <TraceMetric label="Average Relevance" value={asPercent(getAverageRelevance(result))} />
+          </>
+        ) : null}
+        {retrievalLatency ? <TraceMetric label="Retrieval Latency" value={`${retrievalLatency}ms`} /> : null}
       </div>
     </div>
   );
@@ -1065,14 +1101,13 @@ function EvidenceCard({
 
       {isOpen ? (
         <div className="border-t border-border p-3 pt-4">
-          <div className="mb-3 text-xs text-muted-foreground">
-            {sourceDisplayName(source.source)}
-          </div>
           <div className="mb-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <span>Title </span>
-              <span className="text-foreground">{source.title}</span>
-            </div>
+            {source.title ? (
+              <div className="sm:col-span-2">
+                <span>Title </span>
+                <span className="text-foreground">{source.title}</span>
+              </div>
+            ) : null}
             <div>
               <span>Citation ID </span>
               <span className="font-mono text-primary">{source.citation_id}</span>
@@ -1090,11 +1125,15 @@ function EvidenceCard({
               <span className="text-foreground">{usedBy || "Referenced in consensus context"}</span>
             </div>
           </div>
-          <div className="mb-2 text-[11px] uppercase text-muted-foreground">Evidence Excerpt</div>
-          <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
-          <div className="mt-3">
-            <div className="mb-1 text-[11px] uppercase text-muted-foreground">Public Source Link</div>
-            {isPublicUrl ? (
+          {source.snippet ? (
+            <>
+              <div className="mb-2 text-[11px] uppercase text-muted-foreground">Evidence Excerpt</div>
+              <p className="text-xs leading-5 text-muted-foreground">{sourceDisplaySnippet(source.snippet)}</p>
+            </>
+          ) : null}
+          {isPublicUrl ? (
+            <div className="mt-3">
+              <div className="mb-1 text-[11px] uppercase text-muted-foreground">Public Source Link</div>
               <a
                 href={source.url}
                 target="_blank"
@@ -1103,8 +1142,8 @@ function EvidenceCard({
               >
                 {source.url}
               </a>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>

@@ -56,6 +56,8 @@ class ResilientRetrievalProvider(BaseRetrievalProvider):
             results = self.primary.retrieve(question)
             if results:
                 return results
+            if not getattr(self.primary, "fallback_on_empty", True):
+                return []
         except Exception:
             pass
         return self.fallback_provider.retrieve(question)

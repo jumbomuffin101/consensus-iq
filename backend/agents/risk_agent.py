@@ -44,7 +44,7 @@ class RiskAnalystNode:
         refs = [
             item.citation_id
             for item in state.retrieved_context
-            if item.relevance_score >= 0.8
+            if item.relevance_score >= 0.35
         ]
         if profile.domain == "clinical" and any(
             term in question for term in ["stroke", "thrombolytic", "aphasia", "weakness"]
@@ -170,11 +170,22 @@ class RiskAnalystNode:
                     "Quantified downside if the recommendation is wrong.",
                 ],
             }
+        if not refs:
+            domain_content["rationale"] = [
+                "No strong retrieved evidence was available for this prompt.",
+                "Risk analysis is therefore based on decision structure, downside exposure, and missing-evidence constraints rather than source grounding.",
+            ]
+            domain_content["missing"] = [
+                "No strong retrieved evidence found.",
+                *domain_content["missing"],
+            ]
+
         confidence = bounded_score(
             0.5
             + (profile.evidence_quality * 0.31)
             + (profile.risk_level * 0.04)
             - (profile.ambiguity * 0.16)
+            - (0.12 if not refs else 0)
             - prompt_injection_risk(state.question)
         )
         return AgentOutput(

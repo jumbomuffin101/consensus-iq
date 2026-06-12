@@ -103,9 +103,14 @@ class ConsensusReasoningGraph:
                 executor.submit(node, state): node for node in self.specialist_nodes
             }
             for future in as_completed(future_to_node):
+                node = future_to_node[future]
                 try:
                     next_state = future.result()
                 except Exception:
+                    logger.exception("specialist agent failed; using deterministic fallback")
+                    fallback_output = self._fallback_agent_output(node, state)
+                    if fallback_output is not None:
+                        outputs_by_agent[fallback_output.agent] = fallback_output
                     continue
 
                 for output in next_state.agent_outputs:
@@ -125,6 +130,16 @@ class ConsensusReasoningGraph:
         return state.copy(update={"agent_outputs": ordered_outputs}).with_timing(
             "agent_time_ms", elapsed_ms
         )
+
+    def _fallback_agent_output(self, node: Any, state: ReasoningState) -> Any | None:
+        fallback_builder = getattr(node, "_fallback_output", None)
+        if not callable(fallback_builder):
+            return None
+        try:
+            return fallback_builder(state)
+        except Exception:
+            logger.exception("deterministic specialist fallback failed")
+            return None
 
     def _run_timed_node(
         self,

@@ -6,7 +6,6 @@ import urllib.request
 from typing import Any
 
 from models.reasoning import RetrievedContext
-from reasoning.domain import classify_domain
 from retrieval.base import BaseRetrievalProvider, RetrievalProviderError
 
 
@@ -20,6 +19,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
 
     name = "azure-ai-search"
     source_label = "Azure AI Search / Foundry IQ Search Service"
+    fallback_on_empty = False
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         api_version: str = "2024-07-01",
         timeout_seconds: float = 10.0,
         top_k: int = 5,
-        minimum_raw_score: float = 0.01,
+        minimum_relevance_score: float = 0.22,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key
@@ -38,25 +38,13 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         self.api_version = api_version
         self.timeout_seconds = timeout_seconds
         self.top_k = top_k
-        self.minimum_raw_score = minimum_raw_score
+        self.minimum_relevance_score = minimum_relevance_score
 
     def retrieve(self, question: str) -> list[RetrievedContext]:
-        domain = classify_domain(question)
-        domain_filter = domain if domain != "custom" else None
+        return self._query(question)
 
-        contexts = self._query(question, domain_filter=domain_filter)
-        if not contexts and domain_filter:
-            contexts = self._query(question, domain_filter=None)
-
-        if not contexts:
-            raise RetrievalProviderError("Azure AI Search returned no strong context.")
-
-        return contexts
-
-    def build_request_payload(
-        self, question: str, *, domain_filter: str | None = None
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+    def build_request_payload(self, question: str) -> dict[str, Any]:
+        return {
             "search": question,
             "queryType": "simple",
             "searchMode": "any",
@@ -68,11 +56,10 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             "top": self.top_k,
             "count": False,
         }
-        if domain_filter:
-            payload["filter"] = f"domain eq '{domain_filter}'"
-        return payload
 
-    def parse_response(self, data: Any) -> list[tuple[RetrievedContext, float]]:
+    def parse_response(
+        self, data: Any, question: str
+    ) -> list[tuple[RetrievedContext, float, float]]:
         if not isinstance(data, dict):
             return []
 
@@ -80,7 +67,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         if not isinstance(results, list):
             return []
 
-        parsed: list[tuple[RetrievedContext, float]] = []
+        parsed: list[tuple[RetrievedContext, float, float]] = []
         for index, item in enumerate(results[: self.top_k], start=1):
             if not isinstance(item, dict):
                 continue
@@ -96,6 +83,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             raw_score = self._first_number(
                 item, "@search.rerankerScore", "@search.score", "relevance_score", "score"
             )
+            lexical_score = self._lexical_relevance(question, item)
 
             if not snippet:
                 continue
@@ -112,14 +100,15 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
                         relevance_score=0.5,
                     ),
                     raw_score if raw_score is not None else 0.0,
+                    lexical_score,
                 )
             )
         return parsed
 
-    def _query(self, question: str, *, domain_filter: str | None) -> list[RetrievedContext]:
-        payload = self.build_request_payload(question, domain_filter=domain_filter)
+    def _query(self, question: str) -> list[RetrievedContext]:
+        payload = self.build_request_payload(question)
         body = self._send(self._build_http_request(payload))
-        parsed = self.parse_response(self._decode_json(body))
+        parsed = self.parse_response(self._decode_json(body), question)
         return self._normalize_scored_contexts(parsed)
 
     def _build_http_request(self, payload: dict[str, Any]) -> urllib.request.Request:
@@ -158,20 +147,27 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         return f"{self.endpoint}/indexes('{index_name}')/docs/search.post.search?{query}"
 
     def _normalize_scored_contexts(
-        self, scored_contexts: list[tuple[RetrievedContext, float]]
+        self, scored_contexts: list[tuple[RetrievedContext, float, float]]
     ) -> list[RetrievedContext]:
         if not scored_contexts:
             return []
 
-        max_raw_score = max(raw_score for _, raw_score in scored_contexts)
-        if max_raw_score < self.minimum_raw_score:
+        max_raw_score = max(raw_score for _, raw_score, _ in scored_contexts)
+
+        ranked_contexts: list[tuple[RetrievedContext, float]] = []
+        for context, raw_score, lexical_score in scored_contexts:
+            azure_score = raw_score / max_raw_score if max_raw_score > 0 else 0.0
+            combined_score = (lexical_score * 0.85) + (azure_score * 0.15)
+            ranked_contexts.append((context, round(max(0.0, min(1.0, combined_score)), 2)))
+
+        ranked_contexts.sort(key=lambda item: item[1], reverse=True)
+        if not ranked_contexts or ranked_contexts[0][1] < self.minimum_relevance_score:
             return []
 
         normalized_contexts: list[RetrievedContext] = []
-        for context, raw_score in scored_contexts:
-            normalized_score = max(0.05, min(1.0, raw_score / max_raw_score))
+        for context, normalized_score in ranked_contexts:
             normalized_contexts.append(
-                context.copy(update={"relevance_score": round(normalized_score, 2)})
+                context.copy(update={"relevance_score": normalized_score})
             )
         return self.normalize(normalized_contexts)
 
@@ -212,6 +208,69 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             if isinstance(value, (int, float)):
                 return float(value)
         return None
+
+    def _lexical_relevance(self, question: str, item: dict[str, Any]) -> float:
+        query_tokens = self._tokens(question)
+        if not query_tokens:
+            return 0.0
+
+        title_tokens = self._tokens(self._first_text(item, "title"))
+        snippet_tokens = self._tokens(self._first_text(item, "snippet"))
+        content_tokens = self._tokens(self._first_text(item, "content"))
+        tag_tokens = self._tokens(" ".join(self._list_text(item, "tags")))
+
+        title_overlap = self._overlap(query_tokens, title_tokens)
+        snippet_overlap = self._overlap(query_tokens, snippet_tokens)
+        content_overlap = self._overlap(query_tokens, content_tokens)
+        tag_overlap = self._overlap(query_tokens, tag_tokens)
+
+        return min(
+            1.0,
+            (title_overlap * 0.34)
+            + (snippet_overlap * 0.26)
+            + (content_overlap * 0.28)
+            + (tag_overlap * 0.12),
+        )
+
+    def _tokens(self, text: str) -> set[str]:
+        stopwords = {
+            "a",
+            "an",
+            "and",
+            "are",
+            "as",
+            "be",
+            "by",
+            "for",
+            "from",
+            "in",
+            "is",
+            "it",
+            "of",
+            "or",
+            "our",
+            "should",
+            "the",
+            "to",
+            "use",
+            "with",
+        }
+        return {
+            token
+            for token in re.findall(r"[a-z0-9]+", text.lower())
+            if len(token) > 2 and token not in stopwords
+        }
+
+    def _overlap(self, query_tokens: set[str], candidate_tokens: set[str]) -> float:
+        if not query_tokens or not candidate_tokens:
+            return 0.0
+        return len(query_tokens & candidate_tokens) / len(query_tokens)
+
+    def _list_text(self, item: dict[str, Any], key: str) -> list[str]:
+        value = item.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+        return []
 
     def _clean_text(self, text: str) -> str:
         without_tags = re.sub(r"<[^>]+>", "", text)
