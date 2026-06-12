@@ -3,9 +3,9 @@
 ## Mission
 
 ConsensusIQ is a multi-agent reasoning platform for transparent, evidence-based
-consensus decisions. Retrieval is provider-based for Microsoft Foundry IQ with a
-curated public corpus fallback, and agents are provider-based for Azure OpenAI
-with mock fallback.
+consensus decisions. Retrieval is provider-based for Azure AI Search / Foundry IQ
+Search Service, native Microsoft Foundry IQ, and a curated public corpus
+fallback. Agents are provider-based for Azure OpenAI with mock fallback.
 
 ## Shared State
 
@@ -58,31 +58,41 @@ retrieved context, and planner tasks, and returns a validated `AgentOutput`.
 The consensus judge receives all specialist outputs plus the deterministic
 disagreement report.
 
-## Foundry IQ Retrieval
+## Microsoft Retrieval
 
 Retrieval providers live in `backend/retrieval`.
 
 - `retrieval/base.py`: provider contract, resilient fallback wrapper, and graph node.
+- `retrieval/azure_search.py`: direct Azure AI Search / Foundry IQ Search
+  Service provider, request payload builder, API key/index configuration,
+  domain filtering, and response normalization.
 - `retrieval/foundry.py`: Microsoft Foundry IQ HTTP provider, request payload
   builder, API key/index configuration, and response normalization.
 - `retrieval/mock.py`: domain-specific curated public corpus sources for reliable demos.
-- `retrieval/factory.py`: reads `FOUNDRY_IQ_*` environment variables and chooses
-  the provider.
+- `retrieval/factory.py`: chooses Azure Search first, then native Foundry IQ,
+  then local demo retrieval.
 
-Foundry IQ reduces hallucination risk by grounding every agent in retrieved
-context before generation. The shared state stores citation-ready sources with
+Microsoft retrieval reduces hallucination risk by grounding every agent in
+retrieved context before generation. The shared state stores citation-ready sources with
 `citation_id`, `title`, `source`, `url`, `snippet`, and `relevance_score`.
 Agents are instructed to cite `citation_id` values in `evidence_refs`.
 
-Required Foundry IQ variables:
+Optional Azure AI Search variables:
+
+- `AZURE_SEARCH_ENDPOINT`
+- `AZURE_SEARCH_API_KEY`
+- `AZURE_SEARCH_INDEX_NAME`
+- `AZURE_SEARCH_API_VERSION`
+
+Optional native Foundry IQ variables:
 
 - `FOUNDRY_IQ_ENDPOINT`
 - `FOUNDRY_IQ_API_KEY`
 - `FOUNDRY_IQ_INDEX_NAME`
 - `FOUNDRY_IQ_API_VERSION`
 
-If any value is missing or the provider fails, `MockRetrievalProvider` returns
-clearly marked curated public corpus sources so `/analyze` remains reliable. The
+If no live provider is fully configured, or if the configured provider fails,
+`MockRetrievalProvider` returns clearly marked curated public corpus sources so `/analyze` remains reliable. The
 fallback provider classifies prompts as clinical, cybersecurity, research,
 enterprise, finance, or custom so local demos still exercise citation-grounded
 reasoning with real public links.
@@ -90,7 +100,7 @@ reasoning with real public links.
 ## Node Responsibilities
 
 - `RetrievalNode`: retrieves citation-ready `RetrievedContext` records from
-  Foundry IQ or mock fallback.
+  Azure Search, Foundry IQ, or mock fallback.
 - `PlannerNode`: decomposes the question into structured reasoning tasks.
 - `RiskAnalystNode`: identifies risks, limitations, and failure modes.
 - `EvidenceAnalystNode`: evaluates evidence and supporting rationale.
@@ -114,8 +124,9 @@ signals, and missing evidence into the final confidence score.
 
 ## Extension Points
 
-- Adjust Foundry IQ response normalization in `retrieval/foundry.py` if the live
-  project returns different field names.
+- Adjust Azure Search or Foundry IQ response normalization in
+  `retrieval/azure_search.py` or `retrieval/foundry.py` if live services return
+  different field names.
 - Replace mocked specialist node bodies with Azure OpenAI calls that return
   `AgentOutput`; the provider abstraction already supports this.
 - Add more specialist nodes by registering them in `ConsensusReasoningGraph`.

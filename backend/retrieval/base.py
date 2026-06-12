@@ -8,7 +8,7 @@ class RetrievalProviderError(RuntimeError):
 
 
 class RetrievalAdapter(ABC):
-    """Strict adapter contract for live Foundry IQ and fallback retrieval.
+    """Strict adapter contract for Microsoft-backed and fallback retrieval.
 
     All retrieval implementations must return normalized RetrievedContext
     records so agents and API routes never depend on provider-specific fields.

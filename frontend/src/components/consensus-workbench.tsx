@@ -285,12 +285,16 @@ function getConfidenceLimiters(result: AnalyzeResponse, question: string) {
 }
 
 function sourceDisplayName(source: string) {
+  if (source.includes("Azure AI Search") || source.includes("Foundry IQ Search Service")) {
+    return "Azure AI Search / Foundry IQ Search Service";
+  }
   if (
     source === "Mock Foundry IQ Knowledge Base" ||
+    source.includes("Foundry IQ-Compatible Demo Corpus") ||
     source.includes("Demo Corpus") ||
     source.includes("Curated Public Corpus")
   ) {
-    return "Foundry IQ Retrieval Layer \u2014 Curated Public Corpus";
+    return "Foundry IQ-Compatible Demo Corpus";
   }
   return source;
 }
@@ -302,9 +306,20 @@ function sourceDisplaySnippet(snippet: string) {
 }
 
 function sourceType(source: AnalyzeResponse["sources"][number]) {
-  return sourceDisplayName(source.source).includes("Curated Public Corpus")
-    ? "Curated public corpus"
-    : "Live retrieval result";
+  const displayName = sourceDisplayName(source.source);
+  if (displayName === "Foundry IQ-Compatible Demo Corpus") {
+    return "Curated public corpus";
+  }
+  if (displayName === "Azure AI Search / Foundry IQ Search Service") {
+    return "Microsoft-backed retrieval";
+  }
+  return "Live retrieval result";
+}
+
+function retrievalLayerLabel(result: AnalyzeResponse) {
+  const firstSource = result.sources[0]?.source;
+  if (!firstSource) return "Foundry IQ-Compatible Demo Corpus";
+  return sourceDisplayName(firstSource);
 }
 
 function agentsUsingSource(result: AnalyzeResponse, citationId: string) {
@@ -941,10 +956,10 @@ function RetrievedEvidence({
         <div>
           <h3 className="text-sm font-semibold">Retrieved Evidence</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Citation-grounded sources returned through the Foundry IQ retrieval interface.
+            Citation-grounded sources returned through the configured Microsoft retrieval interface.
           </p>
         </div>
-        <Badge tone="muted">Foundry IQ Retrieval</Badge>
+        <Badge tone="muted">{retrievalLayerLabel(result)}</Badge>
       </div>
       <RetrievalTrace
         result={result}
@@ -981,7 +996,7 @@ function RetrievalTrace({
     <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h4 className="text-sm font-semibold">Retrieval Trace</h4>
-        <Badge tone="success">Foundry IQ Grounding</Badge>
+        <Badge tone="success">{retrievalLayerLabel(result)}</Badge>
       </div>
       <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
         <TraceMetric label="Query" value={query} />

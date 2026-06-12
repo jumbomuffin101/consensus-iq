@@ -19,6 +19,13 @@ Optional Azure OpenAI:
 - `AZURE_OPENAI_DEPLOYMENT`
 - `AZURE_OPENAI_API_VERSION`
 
+Optional Azure AI Search / Foundry IQ Search Service:
+
+- `AZURE_SEARCH_ENDPOINT`
+- `AZURE_SEARCH_API_KEY`
+- `AZURE_SEARCH_INDEX_NAME`
+- `AZURE_SEARCH_API_VERSION`
+
 Optional Foundry IQ:
 
 - `FOUNDRY_IQ_ENDPOINT`
@@ -26,7 +33,7 @@ Optional Foundry IQ:
 - `FOUNDRY_IQ_INDEX_NAME`
 - `FOUNDRY_IQ_API_VERSION`
 
-If Azure OpenAI or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is a clearly labeled Foundry IQ Retrieval Layer curated public corpus.
+If Azure OpenAI, Azure AI Search, or Foundry IQ variables are missing or unavailable, ConsensusIQ uses local fallback providers so demos continue to run. The public retrieval fallback is clearly labeled as the Foundry IQ-Compatible Demo Corpus.
 
 ### Frontend
 
