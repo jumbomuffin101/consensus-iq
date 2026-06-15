@@ -49,6 +49,11 @@ export type AnalyzeResponse = {
   agent_outputs: AgentOutput[];
   disagreements: Disagreement[];
   sources: Source[];
+  citation_validity?: {
+    valid: boolean;
+    invalid_citations: string[];
+    available_sources: string[];
+  };
   metadata?: {
     execution_time_ms: number;
     retrieval_time_ms: number;

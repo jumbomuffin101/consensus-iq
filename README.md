@@ -156,7 +156,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 Notes:
 
 - `USE_LIVE_LLM=false` is the default demo mode. It keeps the app fast and deterministic.
-- OpenRouter is optional and is only used when `USE_LIVE_LLM=true`.
+- OpenRouter is optional. When `OPENROUTER_API_KEY` is present, the backend can run one grounded refinement pass over retrieved sources. If OpenRouter fails or returns invalid output, the deterministic answer is returned.
+- `USE_LIVE_LLM=true` is only needed if you want live LLM calls inside every graph agent.
 - Azure Search is optional for local development. If it is not configured, the backend uses the curated public corpus fallback.
 
 ## API
@@ -181,7 +182,10 @@ Response includes:
 - `agent_outputs`
 - `disagreements`
 - `sources`
+- `citation_validity`
 - optional timing metadata
+
+`citation_validity` reports whether returned citations refer only to retrieved source IDs. Invalid citations are logged and removed or repaired before the response is returned.
 
 ## Deployment
 
@@ -205,4 +209,3 @@ ConsensusIQ is a decision-support demo. It is not professional medical, legal, f
 ## Status
 
 Built for Agents League Hackathon 2026.
-

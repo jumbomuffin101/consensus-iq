@@ -69,6 +69,12 @@ class ExecutionMetadata(BaseModel):
     consensus_time_ms: int = 0
 
 
+class CitationValidity(BaseModel):
+    valid: bool = True
+    invalid_citations: list[str] = Field(default_factory=list)
+    available_sources: list[str] = Field(default_factory=list)
+
+
 class ReasoningState(BaseModel):
     question: str
     scenario_label: str = "Custom"
@@ -80,6 +86,7 @@ class ReasoningState(BaseModel):
     confidence_score: float = Field(default=0.0, ge=0, le=1)
     agreement_score: float = Field(default=0.0, ge=0, le=1)
     reasoning_summary: str = ""
+    citation_validity: CitationValidity = Field(default_factory=CitationValidity)
     metadata: ExecutionMetadata = Field(default_factory=ExecutionMetadata)
 
     def upsert_agent_output(self, output: AgentOutput) -> "ReasoningState":

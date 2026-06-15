@@ -4,9 +4,11 @@ from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from grounding.openrouter_grounding import apply_optional_openrouter_grounding
 from llm.factory import create_llm_provider
 from models.reasoning import (
     AgentOutput,
+    CitationValidity,
     Disagreement,
     ExecutionMetadata,
     RetrievedContext,
@@ -30,6 +32,7 @@ class AnalyzeResponse(BaseModel):
     agent_outputs: list[AgentOutput]
     disagreements: list[Disagreement]
     sources: list[RetrievedContext]
+    citation_validity: CitationValidity | None = None
     metadata: ExecutionMetadata | None = None
 
 
@@ -44,6 +47,7 @@ class ProviderStatusResponse(BaseModel):
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     state = analyze_question(request.question)
+    state = await apply_optional_openrouter_grounding(state)
     return AnalyzeResponse(
         consensus=state.consensus,
         scenario_label=state.scenario_label,
@@ -53,6 +57,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         agent_outputs=state.agent_outputs,
         disagreements=state.disagreements,
         sources=state.retrieved_context,
+        citation_validity=state.citation_validity,
         metadata=state.metadata,
     )
 
@@ -72,6 +77,8 @@ async def provider_status() -> ProviderStatusResponse:
     )
 
     llm_provider = _display_llm_provider(create_llm_provider().name)
+    if openrouter_configured and llm_provider == "FastDeterministic":
+        llm_provider = "FastDeterministic + OpenRouterGrounding"
     retrieval_provider = _display_retrieval_provider(create_retrieval_provider().name)
     return ProviderStatusResponse(
         llm_provider=llm_provider,
