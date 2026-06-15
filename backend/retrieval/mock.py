@@ -13,6 +13,11 @@ class MockRetrievalProvider(BaseRetrievalProvider):
     def retrieve(self, question: str) -> list[RetrievedContext]:
         domain = classify_domain(question)
         source_rows = documents_for_domain(domain, question)
+        limited_prefix = (
+            "Limited evidence coverage for this custom prompt. "
+            if domain == "custom"
+            else ""
+        )
         return self.normalize(
             [
                 RetrievedContext(
@@ -21,7 +26,10 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     title=document.title,
                     source=self.source_label,
                     url=document.url if self._is_public_url(document.url) else "",
-                    snippet=f"Curated public corpus source: {document.snippet}",
+                    snippet=(
+                        f"{limited_prefix}Curated public corpus source: "
+                        f"{document.snippet}"
+                    ),
                     relevance_score=(
                         min(document.score, 0.48)
                         if domain == "custom"

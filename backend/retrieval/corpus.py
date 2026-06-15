@@ -324,7 +324,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
     CorpusDocument(
         id="custom-nist-ai-rmf",
         title="Decision criteria and uncertainty framing",
-        domain="custom",
+        domain="general_decision",
         source="NIST AI Risk Management Framework",
         url="https://www.nist.gov/itl/ai-risk-management-framework",
         snippet=(
@@ -341,7 +341,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
     CorpusDocument(
         id="custom-microsoft-responsible-ai",
         title="Responsible AI governance checkpoints",
-        domain="custom",
+        domain="general_decision",
         source="Microsoft Responsible AI",
         url="https://www.microsoft.com/en-us/ai/responsible-ai",
         snippet=(
@@ -357,9 +357,26 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
         score=0.72,
     ),
     CorpusDocument(
+        id="custom-microsoft-purview-governance",
+        title="Microsoft Purview data governance and classification",
+        domain="general_decision",
+        source="Microsoft Purview",
+        url="https://learn.microsoft.com/en-us/purview/data-classification-overview",
+        snippet=(
+            "Sensitive-data decisions should use data classification, ownership, "
+            "protection controls, and auditability before automated or AI-assisted workflows."
+        ),
+        content=(
+            "Microsoft Purview data classification helps organizations discover, classify, "
+            "label, and govern sensitive information across enterprise data estates."
+        ),
+        tags=["Microsoft Purview", "data governance", "classification", "privacy", "custom"],
+        score=0.7,
+    ),
+    CorpusDocument(
         id="custom-education-assessment-validity",
         title="Education assessment validity and fairness",
-        domain="custom",
+        domain="general_decision",
         source="Standards for Educational and Psychological Testing",
         url="https://www.testingstandards.net/open-access-files.html",
         snippet=(
@@ -374,26 +391,43 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
         score=0.7,
     ),
     CorpusDocument(
-        id="custom-ftc-data-security",
-        title="Privacy and data minimization for sensitive decisions",
-        domain="custom",
-        source="Federal Trade Commission",
-        url="https://www.ftc.gov/business-guidance/privacy-security",
+        id="custom-educause-ai-governance",
+        title="Higher education AI governance planning",
+        domain="general_decision",
+        source="EDUCAUSE",
+        url="https://library.educause.edu/resources/2023/9/2023-educause-horizon-action-plan-generative-ai",
         snippet=(
-            "Sensitive data workflows should minimize data collection, protect personal "
-            "information, and define accountability before automation is introduced."
+            "Higher education AI adoption should account for governance, academic policy, "
+            "stakeholder roles, privacy, teaching impact, and responsible implementation."
         ),
         content=(
-            "FTC business guidance covers privacy, security, data minimization, consumer "
-            "protection, and organizational safeguards for personal information."
+            "EDUCAUSE generative AI planning resources discuss institutional action planning, "
+            "policy, governance, opportunities, risks, and higher education operating context."
         ),
-        tags=["privacy", "data security", "data minimization", "automation", "custom"],
+        tags=["EDUCAUSE", "higher education", "AI governance", "policy", "custom"],
+        score=0.68,
+    ),
+    CorpusDocument(
+        id="custom-ftc-data-security",
+        title="FTC automated decision-making and data safeguards",
+        domain="general_decision",
+        source="Federal Trade Commission",
+        url="https://www.ftc.gov/business-guidance/blog/2020/04/using-artificial-intelligence-and-algorithms",
+        snippet=(
+            "Automated decisions should be explainable, fair, evidence-backed, and supported "
+            "by reasonable data security, privacy, and consumer-protection safeguards."
+        ),
+        content=(
+            "FTC guidance on artificial intelligence and algorithms warns against unfair, "
+            "deceptive, biased, or unsupported automated decision practices."
+        ),
+        tags=["FTC", "automated decision-making", "privacy", "fairness", "custom"],
         score=0.68,
     ),
     CorpusDocument(
         id="custom-fhwa-roundabouts",
         title="Roundabout safety and intersection suitability",
-        domain="custom",
+        domain="general_decision",
         source="Federal Highway Administration",
         url="https://highways.dot.gov/safety/intersection-safety/intersection-types/roundabouts",
         snippet=(
@@ -410,7 +444,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
     CorpusDocument(
         id="custom-azure-responsible-innovation",
         title="Comparable option analysis",
-        domain="custom",
+        domain="general_decision",
         source="Microsoft Azure Architecture Center",
         url="https://learn.microsoft.com/en-us/azure/architecture/guide/responsible-innovation/",
         snippet=(
@@ -427,7 +461,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
     CorpusDocument(
         id="custom-nist-csf-evidence-gaps",
         title="Evidence gap register",
-        domain="custom",
+        domain="general_decision",
         source="NIST Cybersecurity Framework",
         url="https://www.nist.gov/cyberframework",
         snippet=(
@@ -500,7 +534,11 @@ def documents_for_domain(domain: str, question: str = "") -> list[CorpusDocument
     documents = [document for document in CURATED_PUBLIC_CORPUS if document.domain == domain]
     if documents:
         return documents[:3]
-    return [document for document in CURATED_PUBLIC_CORPUS if document.domain == "custom"][:3]
+    return [
+        document
+        for document in CURATED_PUBLIC_CORPUS
+        if document.domain == "general_decision"
+    ][:3]
 
 
 def _by_ids(document_ids: list[str]) -> list[CorpusDocument]:

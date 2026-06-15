@@ -64,7 +64,11 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         return payload
 
     def parse_response(
-        self, data: Any, question: str, expected_domain: str | None = None
+        self,
+        data: Any,
+        question: str,
+        expected_domain: str | None = None,
+        allowed_domains: set[str] | None = None,
     ) -> list[tuple[RetrievedContext, float, float]]:
         if not isinstance(data, dict):
             return []
@@ -76,6 +80,9 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         parsed: list[tuple[RetrievedContext, float, float]] = []
         for index, item in enumerate(results[: self.top_k], start=1):
             if not isinstance(item, dict):
+                continue
+            item_domain = self._first_text(item, "domain").lower()
+            if allowed_domains is not None and item_domain not in allowed_domains:
                 continue
 
             title = self._first_text(item, "title")
@@ -113,6 +120,16 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
 
     def _query(self, question: str) -> list[RetrievedContext]:
         detected_domain = classify_domain(question)
+        if detected_domain == "custom":
+            results = self._query_once(
+                question,
+                domain_filter=None,
+                expected_domain="general_decision",
+                allowed_domains={"general_decision", "custom"},
+                minimum_relevance_score=0.45,
+            )
+            return self._with_limited_evidence_notice(results)
+
         if detected_domain != "custom":
             domain_results = self._query_once(question, detected_domain)
             if domain_results:
@@ -120,12 +137,22 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         return self._query_once(question, None)
 
     def _query_once(
-        self, question: str, domain_filter: str | None
+        self,
+        question: str,
+        domain_filter: str | None,
+        expected_domain: str | None = None,
+        allowed_domains: set[str] | None = None,
+        minimum_relevance_score: float | None = None,
     ) -> list[RetrievedContext]:
         payload = self.build_request_payload(question, domain_filter)
         body = self._send(self._build_http_request(payload))
-        parsed = self.parse_response(self._decode_json(body), question, domain_filter)
-        return self._normalize_scored_contexts(parsed)
+        parsed = self.parse_response(
+            self._decode_json(body),
+            question,
+            expected_domain or domain_filter,
+            allowed_domains,
+        )
+        return self._normalize_scored_contexts(parsed, minimum_relevance_score)
 
     def _build_http_request(self, payload: dict[str, Any]) -> urllib.request.Request:
         return urllib.request.Request(
@@ -163,7 +190,9 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         return f"{self.endpoint}/indexes('{index_name}')/docs/search.post.search?{query}"
 
     def _normalize_scored_contexts(
-        self, scored_contexts: list[tuple[RetrievedContext, float, float]]
+        self,
+        scored_contexts: list[tuple[RetrievedContext, float, float]],
+        minimum_relevance_score: float | None = None,
     ) -> list[RetrievedContext]:
         if not scored_contexts:
             return []
@@ -177,12 +206,13 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             ranked_contexts.append((context, round(max(0.0, min(0.92, combined_score)), 2)))
 
         ranked_contexts.sort(key=lambda item: item[1], reverse=True)
-        if not ranked_contexts or ranked_contexts[0][1] < self.minimum_relevance_score:
+        minimum_score = minimum_relevance_score or self.minimum_relevance_score
+        if not ranked_contexts or ranked_contexts[0][1] < minimum_score:
             return []
 
         normalized_contexts: list[RetrievedContext] = []
         for context, normalized_score in ranked_contexts:
-            if normalized_score < self.minimum_relevance_score:
+            if normalized_score < minimum_score:
                 continue
             normalized_contexts.append(
                 context.copy(update={"relevance_score": normalized_score})
@@ -303,3 +333,25 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
 
     def _is_public_url(self, url: str) -> bool:
         return url.startswith(("https://", "http://"))
+
+    def _with_limited_evidence_notice(
+        self, contexts: list[RetrievedContext]
+    ) -> list[RetrievedContext]:
+        if not contexts:
+            return []
+
+        average_relevance = sum(item.relevance_score for item in contexts) / len(contexts)
+        if average_relevance >= 0.55:
+            return contexts
+
+        return [
+            item.copy(
+                update={
+                    "snippet": (
+                        "Limited evidence coverage for this custom prompt. "
+                        f"{item.snippet}"
+                    )
+                }
+            )
+            for item in contexts
+        ]
