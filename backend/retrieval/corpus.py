@@ -388,6 +388,17 @@ def documents_for_domain(domain: str, question: str = "") -> list[CorpusDocument
         ]
         return _by_ids(selected_ids)
 
+    if domain == "clinical" and any(
+        term in normalized_question
+        for term in ["seizure", "mri", "lumbar", "puncture", "lp"]
+    ):
+        selected_ids = [
+            "clinical-merck-seizure-disorders",
+            "clinical-merck-meningitis-lp",
+            "clinical-emergency-neurology-parallel-treatment",
+        ]
+        return _by_ids(selected_ids)
+
     documents = [document for document in CURATED_PUBLIC_CORPUS if document.domain == domain]
     if documents:
         return documents[:3]

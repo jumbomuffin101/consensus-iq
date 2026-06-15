@@ -890,18 +890,6 @@ function ConfidenceSummary({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
-            Confidence
-          </div>
-          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result.confidence_score)}</div>
-        </div>
-        <div className="rounded-md border border-border bg-card p-3">
-          <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
-            Agreement
-          </div>
-          <div className="font-mono text-2xl font-semibold text-primary">{resultScoreLabel(result.agreement_score)}</div>
-        </div>
-        <div className="rounded-md border border-border bg-card p-3">
-          <div className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">
             Why Confidence Is Not Higher
           </div>
           <p className="text-sm leading-6 text-foreground">

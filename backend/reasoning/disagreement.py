@@ -42,33 +42,33 @@ class DisagreementDetector:
             return 0.25
 
         disagreements = self.detect(outputs)
-        similarities = [
-            self._token_similarity(left.recommendation, right.recommendation)
-            for index, left in enumerate(outputs)
-            for right in outputs[index + 1 :]
-        ]
-        semantic_alignment = sum(similarities) / len(similarities) if similarities else 0.5
         direction_alignment = self._direction_alignment(outputs)
         confidence_values = [output.confidence_score for output in outputs]
         confidence_spread = max(confidence_values) - min(confidence_values)
-        evidence_coverage = sum(1 for output in outputs if output.evidence_refs) / len(outputs)
+        confidence_alignment = max(0.0, 1.0 - min(1.0, confidence_spread / 0.5))
+        role_coverage = min(1.0, len(outputs) / 3)
+        conflict_penalty = 0.0
+        if any(item.kind == "conflicting_recommendation" for item in disagreements):
+            conflict_penalty += 0.12
+        if any(item.severity == "high" for item in disagreements):
+            conflict_penalty += 0.08
         severity_penalty = sum(
-            {"low": 0.04, "medium": 0.08, "high": 0.18}[item.severity]
+            {"low": 0.01, "medium": 0.025, "high": 0.06}[item.severity]
             for item in disagreements
         )
-        disagreement_count_penalty = min(0.16, len(disagreements) * 0.035)
+        disagreement_count_penalty = min(0.08, len(disagreements) * 0.018)
         raw_score = (
-            0.34
-            + (semantic_alignment * 0.24)
-            + (direction_alignment * 0.24)
-            + (evidence_coverage * 0.18)
+            0.22
+            + (direction_alignment * 0.42)
+            + (confidence_alignment * 0.2)
+            + (role_coverage * 0.12)
             + self._domain_alignment_bonus(outputs)
-            - (confidence_spread * 0.22)
+            - conflict_penalty
             - severity_penalty
             - disagreement_count_penalty
             - self._major_concern_penalty(outputs)
         )
-        return round(max(0.18, min(0.92, raw_score)), 2)
+        return round(max(0.25, min(0.88, raw_score)), 2)
 
     def _detect_conflicting_recommendations(
         self, outputs: list[AgentOutput]

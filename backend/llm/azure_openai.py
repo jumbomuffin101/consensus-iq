@@ -43,6 +43,7 @@ class AzureOpenAIProvider(BaseLLMProvider):
         system_prompt: str,
         user_prompt: str,
         fallback: dict[str, Any],
+        agent_name: str = "unknown",
     ) -> dict[str, Any]:
         last_error: Exception | None = None
 

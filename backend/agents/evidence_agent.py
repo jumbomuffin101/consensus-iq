@@ -31,6 +31,7 @@ class EvidenceAnalystNode:
                 "evidence_refs, missing_evidence, limitations."
             ),
             fallback=fallback_output.dict(),
+            agent_name="evidence analyst",
         )
         try:
             output = AgentOutput.parse_obj(payload)

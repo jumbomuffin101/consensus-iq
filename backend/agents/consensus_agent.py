@@ -30,22 +30,12 @@ class ConsensusJudgeNode:
         disagreements = self.detector.detect(state.agent_outputs)
         agreement_score = self.detector.calculate_agreement_score(state.agent_outputs)
         profile = build_domain_profile(state)
-        missing_penalty = missing_information_load(state)
         injection_penalty = prompt_injection_risk(state.question)
-        source_count = len(state.retrieved_context)
-        source_count_bonus = min(0.08, source_count * 0.025)
-        weak_evidence_penalty = 0.08 if state.retrieved_context and profile.evidence_quality < 0.55 else 0.0
-        custom_weak_penalty = (
-            0.06
-            if profile.domain == "custom" and profile.evidence_quality < 0.7
-            else 0.0
-        )
-        disagreement_penalty = min(0.14, len(disagreements) * 0.025)
         avg_confidence = (
             sum(output.confidence_score for output in state.agent_outputs)
             / len(state.agent_outputs)
             if state.agent_outputs
-            else 0.0
+            else 0.35
         )
         confidence_values = [output.confidence_score for output in state.agent_outputs]
         confidence_spread = (
@@ -53,25 +43,22 @@ class ConsensusJudgeNode:
             if confidence_values
             else 0.3
         )
+        evidence_quality = self._evidence_quality_score(state, profile.evidence_quality)
+        answer_completeness = self._answer_completeness_score(state, avg_confidence)
+        prompt_clarity = max(0.25, min(0.9, 1.0 - profile.ambiguity))
+        safety_score = max(0.0, 1.0 - (injection_penalty * 4.0))
         raw_confidence = (
-            (avg_confidence * 0.38)
-            + (agreement_score * 0.3)
-            + (profile.evidence_quality * 0.24)
-            + (profile.source_certainty * 0.1)
-            + source_count_bonus
-            - (profile.ambiguity * 0.18)
-            - (profile.risk_level * 0.08)
-            - (confidence_spread * 0.08)
-            - (0.12 if not state.retrieved_context else 0)
-            - weak_evidence_penalty
-            - custom_weak_penalty
-            - disagreement_penalty
-            - missing_penalty
-            - injection_penalty
+            (evidence_quality * 0.30)
+            + (agreement_score * 0.25)
+            + (answer_completeness * 0.20)
+            + (prompt_clarity * 0.15)
+            + (safety_score * 0.10)
+            - min(0.08, confidence_spread * 0.08)
+            - min(0.06, missing_information_load(state) * 0.25)
         )
-        if not state.retrieved_context:
-            raw_confidence = max(raw_confidence, 0.18)
-        confidence_score = bounded_score(raw_confidence)
+        confidence_score = self._bounded_confidence_range(
+            raw_confidence, profile.domain, evidence_quality, injection_penalty
+        )
 
         state_with_disagreements = state.copy(update={"disagreements": disagreements})
         fallback_judgment = ConsensusJudgment(
@@ -100,6 +87,7 @@ class ConsensusJudgeNode:
                 "between 0 and 1."
             ),
             fallback=fallback_judgment.dict(),
+            agent_name="consensus judge",
         )
         try:
             judgment = ConsensusJudgment.parse_obj(payload)
@@ -195,6 +183,49 @@ class ConsensusJudgeNode:
             "expected benefits, participants or stakeholders, downside risks, and a "
             "small reversible trial before making a broad commitment"
         )
+
+    def _evidence_quality_score(
+        self, state: ReasoningState, profile_evidence_quality: float
+    ) -> float:
+        source_count = len(state.retrieved_context)
+        if source_count == 0:
+            return 0.25
+        source_bonus = min(0.12, source_count * 0.04)
+        return max(0.25, min(0.9, profile_evidence_quality + source_bonus))
+
+    def _answer_completeness_score(
+        self, state: ReasoningState, avg_agent_confidence: float
+    ) -> float:
+        if not state.agent_outputs:
+            return 0.25
+        populated_outputs = sum(
+            1
+            for output in state.agent_outputs
+            if output.recommendation and output.conclusion
+        )
+        coverage = populated_outputs / len(state.agent_outputs)
+        missing_count = sum(len(output.missing_evidence) for output in state.agent_outputs)
+        missing_penalty = min(0.22, missing_count * 0.025)
+        return max(
+            0.25,
+            min(0.9, (coverage * 0.55) + (avg_agent_confidence * 0.45) - missing_penalty),
+        )
+
+    def _bounded_confidence_range(
+        self,
+        raw_confidence: float,
+        domain: str,
+        evidence_quality: float,
+        injection_penalty: float,
+    ) -> float:
+        if injection_penalty:
+            return round(max(0.1, min(0.3, raw_confidence)), 2)
+        if domain == "custom":
+            upper_bound = 0.5
+            return round(max(0.3, min(upper_bound, raw_confidence)), 2)
+        upper_bound = 0.75 if domain == "clinical" and evidence_quality >= 0.55 else 0.65
+        lower_bound = 0.45 if evidence_quality >= 0.35 else 0.35
+        return round(max(lower_bound, min(upper_bound, raw_confidence)), 2)
 
     def _build_reasoning_summary(
         self, state: ReasoningState, disagreements: list, domain: str

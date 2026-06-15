@@ -6,6 +6,7 @@ import urllib.request
 from typing import Any
 
 from models.reasoning import RetrievedContext
+from reasoning.domain import classify_domain
 from retrieval.base import BaseRetrievalProvider, RetrievalProviderError
 
 
@@ -30,7 +31,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         api_version: str = "2024-07-01",
         timeout_seconds: float = 10.0,
         top_k: int = 5,
-        minimum_relevance_score: float = 0.22,
+        minimum_relevance_score: float = 0.3,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key
@@ -43,8 +44,10 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
     def retrieve(self, question: str) -> list[RetrievedContext]:
         return self._query(question)
 
-    def build_request_payload(self, question: str) -> dict[str, Any]:
-        return {
+    def build_request_payload(
+        self, question: str, domain_filter: str | None = None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "search": question,
             "queryType": "simple",
             "searchMode": "any",
@@ -56,9 +59,12 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             "top": self.top_k,
             "count": False,
         }
+        if domain_filter:
+            payload["filter"] = f"domain eq '{domain_filter}'"
+        return payload
 
     def parse_response(
-        self, data: Any, question: str
+        self, data: Any, question: str, expected_domain: str | None = None
     ) -> list[tuple[RetrievedContext, float, float]]:
         if not isinstance(data, dict):
             return []
@@ -83,7 +89,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             raw_score = self._first_number(
                 item, "@search.rerankerScore", "@search.score", "relevance_score", "score"
             )
-            lexical_score = self._lexical_relevance(question, item)
+            lexical_score = self._lexical_relevance(question, item, expected_domain)
 
             if not snippet:
                 continue
@@ -106,9 +112,19 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         return parsed
 
     def _query(self, question: str) -> list[RetrievedContext]:
-        payload = self.build_request_payload(question)
+        detected_domain = classify_domain(question)
+        if detected_domain != "custom":
+            domain_results = self._query_once(question, detected_domain)
+            if domain_results:
+                return domain_results
+        return self._query_once(question, None)
+
+    def _query_once(
+        self, question: str, domain_filter: str | None
+    ) -> list[RetrievedContext]:
+        payload = self.build_request_payload(question, domain_filter)
         body = self._send(self._build_http_request(payload))
-        parsed = self.parse_response(self._decode_json(body), question)
+        parsed = self.parse_response(self._decode_json(body), question, domain_filter)
         return self._normalize_scored_contexts(parsed)
 
     def _build_http_request(self, payload: dict[str, Any]) -> urllib.request.Request:
@@ -157,8 +173,8 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         ranked_contexts: list[tuple[RetrievedContext, float]] = []
         for context, raw_score, lexical_score in scored_contexts:
             azure_score = raw_score / max_raw_score if max_raw_score > 0 else 0.0
-            combined_score = (lexical_score * 0.85) + (azure_score * 0.15)
-            ranked_contexts.append((context, round(max(0.0, min(1.0, combined_score)), 2)))
+            combined_score = (lexical_score * 0.8) + (azure_score * 0.2)
+            ranked_contexts.append((context, round(max(0.0, min(0.92, combined_score)), 2)))
 
         ranked_contexts.sort(key=lambda item: item[1], reverse=True)
         if not ranked_contexts or ranked_contexts[0][1] < self.minimum_relevance_score:
@@ -166,6 +182,8 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
 
         normalized_contexts: list[RetrievedContext] = []
         for context, normalized_score in ranked_contexts:
+            if normalized_score < self.minimum_relevance_score:
+                continue
             normalized_contexts.append(
                 context.copy(update={"relevance_score": normalized_score})
             )
@@ -209,7 +227,9 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
                 return float(value)
         return None
 
-    def _lexical_relevance(self, question: str, item: dict[str, Any]) -> float:
+    def _lexical_relevance(
+        self, question: str, item: dict[str, Any], expected_domain: str | None
+    ) -> float:
         query_tokens = self._tokens(question)
         if not query_tokens:
             return 0.0
@@ -223,13 +243,18 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         snippet_overlap = self._overlap(query_tokens, snippet_tokens)
         content_overlap = self._overlap(query_tokens, content_tokens)
         tag_overlap = self._overlap(query_tokens, tag_tokens)
+        domain_match = 0.0
+        item_domain = self._first_text(item, "domain").lower()
+        if expected_domain and item_domain == expected_domain:
+            domain_match = 0.12
 
         return min(
             1.0,
             (title_overlap * 0.34)
             + (snippet_overlap * 0.26)
             + (content_overlap * 0.28)
-            + (tag_overlap * 0.12),
+            + (tag_overlap * 0.12)
+            + domain_match,
         )
 
     def _tokens(self, text: str) -> set[str]:

@@ -23,7 +23,7 @@ class OpenRouterProvider(BaseLLMProvider):
         model: str,
         base_url: str = "https://openrouter.ai/api/v1",
         app_name: str = "ConsensusIQ",
-        timeout_seconds: float = 15.0,
+        timeout_seconds: float = 8.0,
         max_retries: int = 0,
     ) -> None:
         self.api_key = api_key
@@ -39,29 +39,30 @@ class OpenRouterProvider(BaseLLMProvider):
         system_prompt: str,
         user_prompt: str,
         fallback: dict[str, Any],
+        agent_name: str = "unknown",
     ) -> dict[str, Any]:
         last_error: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
             try:
-                logger.info(
-                    "OpenRouter request started model=%s attempt=%s timeout=%ss",
-                    self.model,
-                    attempt + 1,
-                    self.timeout_seconds,
-                )
+                start = time.perf_counter()
+                logger.info("OpenRouter request start: agent=%s model=%s", agent_name, self.model)
                 payload = self._build_payload(system_prompt, user_prompt)
                 body = self._send(payload)
                 content = self._extract_message_content(self._decode_json(body))
                 parsed = self._parse_json(content)
-                logger.info("OpenRouter request completed model=%s", self.model)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                logger.info(
+                    "OpenRouter request success: agent=%s latency_ms=%s",
+                    agent_name,
+                    latency_ms,
+                )
                 return parsed
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    "OpenRouter request failed model=%s attempt=%s: %s",
-                    self.model,
-                    attempt + 1,
+                    "OpenRouter request failed: agent=%s reason=%s",
+                    agent_name,
                     exc,
                 )
                 if attempt < self.max_retries:

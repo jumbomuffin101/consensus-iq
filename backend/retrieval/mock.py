@@ -22,7 +22,11 @@ class MockRetrievalProvider(BaseRetrievalProvider):
                     source=self.source_label,
                     url=document.url if self._is_public_url(document.url) else "",
                     snippet=f"Curated public corpus source: {document.snippet}",
-                    relevance_score=document.score,
+                    relevance_score=(
+                        min(document.score, 0.48)
+                        if domain == "custom"
+                        else document.score
+                    ),
                 )
                 for index, document in enumerate(source_rows, start=1)
             ]

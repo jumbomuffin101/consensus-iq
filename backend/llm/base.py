@@ -26,6 +26,7 @@ class BaseLLMProvider(ABC):
         system_prompt: str,
         user_prompt: str,
         fallback: dict[str, Any],
+        agent_name: str = "unknown",
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -46,17 +47,20 @@ class ResilientLLMProvider(BaseLLMProvider):
         system_prompt: str,
         user_prompt: str,
         fallback: dict[str, Any],
+        agent_name: str = "unknown",
     ) -> dict[str, Any]:
         try:
             return self.primary.complete_json(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 fallback=fallback,
+                agent_name=agent_name,
             )
         except Exception as exc:
             logger.warning(
-                "LLM provider %s failed; falling back to %s: %s",
+                "LLM provider %s failed for agent=%s; falling back to %s: %s",
                 self.primary.name,
+                agent_name,
                 self.fallback_provider.name,
                 exc,
             )
@@ -64,4 +68,5 @@ class ResilientLLMProvider(BaseLLMProvider):
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 fallback=fallback,
+                agent_name=agent_name,
             )
