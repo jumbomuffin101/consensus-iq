@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 
+from config import prefer_azure_openai
 from llm.azure_openai import AzureOpenAIProvider
 from llm.base import BaseLLMProvider, ResilientLLMProvider
 from llm.mock import MockLLMProvider
@@ -37,7 +38,14 @@ def create_llm_provider() -> BaseLLMProvider:
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
     api_version = os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
 
-    if all([endpoint, api_key, deployment, api_version]):
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
+    openrouter_base_url = os.getenv(
+        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    ).strip()
+    openrouter_app_name = os.getenv("OPENROUTER_APP_NAME", "ConsensusIQ").strip()
+
+    if all([endpoint, api_key, deployment, api_version]) and prefer_azure_openai():
         try:
             azure_provider = AzureOpenAIProvider(
                 endpoint=endpoint,
@@ -50,13 +58,6 @@ def create_llm_provider() -> BaseLLMProvider:
         except Exception as exc:
             logger.warning("AzureOpenAI provider initialization failed: %s", exc)
 
-    openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
-    openrouter_base_url = os.getenv(
-        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-    ).strip()
-    openrouter_app_name = os.getenv("OPENROUTER_APP_NAME", "ConsensusIQ").strip()
-
     if openrouter_api_key:
         openrouter_provider = OpenRouterProvider(
             api_key=openrouter_api_key,
@@ -66,6 +67,19 @@ def create_llm_provider() -> BaseLLMProvider:
         )
         logger.info("Active LLM provider: OpenRouter")
         return ResilientLLMProvider(openrouter_provider, mock_provider)
+
+    if all([endpoint, api_key, deployment, api_version]):
+        try:
+            azure_provider = AzureOpenAIProvider(
+                endpoint=endpoint,
+                api_key=api_key,
+                deployment=deployment,
+                api_version=api_version,
+            )
+            logger.info("Active LLM provider: AzureOpenAI")
+            return ResilientLLMProvider(azure_provider, mock_provider)
+        except Exception as exc:
+            logger.warning("AzureOpenAI provider initialization failed: %s", exc)
 
     logger.info("Active LLM provider: FastDeterministic")
     return mock_provider

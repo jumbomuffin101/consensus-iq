@@ -1,9 +1,16 @@
 import logging
-import os
 
 from dotenv import load_dotenv
 
-from config import azure_openai_configured, live_llm_enabled, prefer_azure_openai
+from config import (
+    azure_openai_configured,
+    live_llm_enabled,
+    openrouter_app_name,
+    openrouter_base_url,
+    openrouter_configured,
+    openrouter_model,
+    prefer_azure_openai,
+)
 from grounding.citations import (
     strip_invalid_citations,
     validate_citations,
@@ -25,23 +32,44 @@ async def apply_optional_openrouter_grounding(state: ReasoningState) -> Reasonin
     """
 
     load_dotenv()
-    if not os.getenv("OPENROUTER_API_KEY", "").strip():
-        logger.info("reasoning provider used: mock")
-        return validate_state_citations(state)
+    logger.info(
+        "OpenRouter routing decision openrouter_configured=%s openrouter_model=%s openrouter_base_url=%s openrouter_app_name=%s retrieved_source_count=%s",
+        openrouter_configured(),
+        openrouter_model(),
+        openrouter_base_url(),
+        openrouter_app_name(),
+        len(state.retrieved_context),
+    )
+    if not openrouter_configured():
+        fallback_reason = "OPENROUTER_API_KEY is missing"
+        logger.info("reasoning provider used: mock fallback_reason=%s", fallback_reason)
+        return validate_state_citations(state).copy(
+            update={"provider_used": "mock", "fallback_reason": fallback_reason}
+        )
 
     if azure_openai_configured() and prefer_azure_openai():
         provider_name = "azure" if live_llm_enabled() else "mock"
-        logger.info("reasoning provider used: %s", provider_name)
-        return validate_state_citations(state)
-
-    if not state.retrieved_context:
-        logger.info("reasoning provider used: mock; no retrieved context to ground")
-        return validate_state_citations(state)
+        fallback_reason = (
+            None
+            if provider_name == "azure"
+            else "Azure OpenAI is preferred, but live agent mode is disabled"
+        )
+        logger.info(
+            "reasoning provider used: %s fallback_reason=%s",
+            provider_name,
+            fallback_reason,
+        )
+        return validate_state_citations(state).copy(
+            update={"provider_used": provider_name, "fallback_reason": fallback_reason}
+        )
 
     client = OpenRouterGroundedClient.from_env()
     if client is None:
-        logger.info("reasoning provider used: mock")
-        return validate_state_citations(state)
+        fallback_reason = "OpenRouter client could not be initialized from env"
+        logger.info("reasoning provider used: mock fallback_reason=%s", fallback_reason)
+        return validate_state_citations(state).copy(
+            update={"provider_used": "mock", "fallback_reason": fallback_reason}
+        )
 
     deterministic_state = validate_state_citations(state)
     deterministic_answer = {
@@ -60,8 +88,11 @@ async def apply_optional_openrouter_grounding(state: ReasoningState) -> Reasonin
             agent_name="grounded consensus",
         )
     except Exception:
-        logger.info("reasoning provider used: mock; OpenRouter fallback applied")
-        return deterministic_state
+        fallback_reason = "OpenRouter request failed, timed out, or returned invalid data"
+        logger.info("reasoning provider used: mock fallback_reason=%s", fallback_reason)
+        return deterministic_state.copy(
+            update={"provider_used": "mock", "fallback_reason": fallback_reason}
+        )
 
     refined_state = _merge_grounded_payload(deterministic_state, payload)
     validity = validate_citations(
@@ -70,8 +101,14 @@ async def apply_optional_openrouter_grounding(state: ReasoningState) -> Reasonin
     )
 
     if validity.valid:
-        logger.info("reasoning provider used: openrouter")
-        return refined_state.copy(update={"citation_validity": validity})
+        logger.info("reasoning provider used: openrouter fallback_reason=None")
+        return refined_state.copy(
+            update={
+                "citation_validity": validity,
+                "provider_used": "openrouter",
+                "fallback_reason": None,
+            }
+        )
 
     try:
         payload = await client.complete_grounded_json(
@@ -87,8 +124,14 @@ async def apply_optional_openrouter_grounding(state: ReasoningState) -> Reasonin
             refined_state.retrieved_context,
         )
         if strict_validity.valid:
-            logger.info("reasoning provider used: openrouter")
-            return refined_state.copy(update={"citation_validity": strict_validity})
+            logger.info("reasoning provider used: openrouter fallback_reason=None")
+            return refined_state.copy(
+                update={
+                    "citation_validity": strict_validity,
+                    "provider_used": "openrouter",
+                    "fallback_reason": None,
+                }
+            )
         validity = strict_validity
     except Exception:
         logger.info("OpenRouter citation repair failed; sanitizing invalid citations")
@@ -106,6 +149,8 @@ async def apply_optional_openrouter_grounding(state: ReasoningState) -> Reasonin
                 refined_state.reasoning_summary, validity.invalid_citations
             ),
             "citation_validity": validity,
+            "provider_used": "openrouter",
+            "fallback_reason": "Invalid citations were removed after repair failed",
         }
     )
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from config import openrouter_app_name, openrouter_base_url, openrouter_model
 from llm.base import LLMProviderError
 from models.reasoning import RetrievedContext
 
@@ -47,16 +48,20 @@ class OpenRouterGroundedClient:
         if not api_key:
             return None
 
+        model = openrouter_model()
+        base_url = openrouter_base_url()
+        app_name = openrouter_app_name()
+        logger.info(
+            "OpenRouter settings read configured=true model=%s base_url=%s app_name=%s",
+            model,
+            base_url,
+            app_name,
+        )
         return cls(
             api_key=api_key,
-            model=os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
-            or "openai/gpt-4o-mini",
-            base_url=os.getenv(
-                "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-            ).strip()
-            or "https://openrouter.ai/api/v1",
-            app_name=os.getenv("OPENROUTER_APP_NAME", "ConsensusIQ").strip()
-            or "ConsensusIQ",
+            model=model,
+            base_url=base_url,
+            app_name=app_name,
             frontend_origin=_first_origin(os.getenv("FRONTEND_ORIGIN", "")),
         )
 

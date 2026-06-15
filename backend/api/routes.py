@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
@@ -15,6 +17,7 @@ from reasoning.graph import analyze_question
 from retrieval.factory import create_retrieval_provider
 
 router = APIRouter()
+logger = logging.getLogger("consensus_iq.api")
 
 
 class AnalyzeRequest(BaseModel):
@@ -31,6 +34,8 @@ class AnalyzeResponse(BaseModel):
     disagreements: list[Disagreement]
     sources: list[RetrievedContext]
     citation_validity: CitationValidity | None = None
+    provider_used: str = "mock"
+    fallback_reason: str | None = None
     metadata: ExecutionMetadata | None = None
 
 
@@ -44,8 +49,15 @@ class ProviderStatusResponse(BaseModel):
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+    logger.info("POST /analyze request received question_length=%s", len(request.question))
     state = analyze_question(request.question)
+    logger.info("POST /analyze retrieved source count=%s", len(state.retrieved_context))
     state = await apply_optional_openrouter_grounding(state)
+    logger.info(
+        "POST /analyze provider selected=%s fallback_reason=%s",
+        state.provider_used,
+        state.fallback_reason,
+    )
     return AnalyzeResponse(
         consensus=state.consensus,
         scenario_label=state.scenario_label,
@@ -56,6 +68,8 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         disagreements=state.disagreements,
         sources=state.retrieved_context,
         citation_validity=state.citation_validity,
+        provider_used=state.provider_used,
+        fallback_reason=state.fallback_reason,
         metadata=state.metadata,
     )
 

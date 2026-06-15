@@ -32,6 +32,19 @@ def openrouter_model() -> str:
     return os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip() or "openai/gpt-4o-mini"
 
 
+def openrouter_base_url() -> str:
+    load_dotenv()
+    return (
+        os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip()
+        or "https://openrouter.ai/api/v1"
+    )
+
+
+def openrouter_app_name() -> str:
+    load_dotenv()
+    return os.getenv("OPENROUTER_APP_NAME", "ConsensusIQ").strip() or "ConsensusIQ"
+
+
 def azure_openai_configured() -> bool:
     load_dotenv()
     return all(

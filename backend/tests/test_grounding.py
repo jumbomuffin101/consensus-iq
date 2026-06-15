@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from api.routes import AnalyzeRequest, analyze
 from grounding.citations import validate_citations
 from grounding.openrouter_grounding import apply_optional_openrouter_grounding
 from llm.openrouter_client import OpenRouterGroundedClient
@@ -42,6 +43,8 @@ class GroundingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(mocked_completion.called)
         self.assertEqual(result.consensus, "Use approved tools with confidentiality controls.")
         self.assertTrue(result.citation_validity.valid)
+        self.assertEqual(result.provider_used, "mock")
+        self.assertEqual(result.fallback_reason, "OPENROUTER_API_KEY is missing")
 
     async def test_openrouter_called_with_api_key_and_sources(self) -> None:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False):
@@ -59,6 +62,39 @@ class GroundingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(mocked_completion.called)
         self.assertIn("[S1]", result.consensus)
         self.assertTrue(result.citation_validity.valid)
+        self.assertEqual(result.provider_used, "openrouter")
+        self.assertIsNone(result.fallback_reason)
+
+    async def test_analyze_endpoint_uses_openrouter_when_key_present(self) -> None:
+        deterministic_state = ReasoningState(
+            question="Should a city replace traffic lights with roundabouts?",
+            consensus="Use a safety evaluation before changing intersections.",
+            reasoning_summary="The deterministic graph found traffic safety tradeoffs.",
+            confidence_score=0.42,
+            agreement_score=0.58,
+            retrieved_context=[],
+        )
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False):
+            with patch("api.routes.analyze_question", return_value=deterministic_state):
+                with patch.object(
+                    OpenRouterGroundedClient,
+                    "complete_grounded_json",
+                    new_callable=AsyncMock,
+                    return_value={
+                        "consensus": "I could not verify this from the available sources.",
+                        "reasoning_summary": "No retrieved sources were available for grounding.",
+                    },
+                ) as mocked_completion:
+                    response = await analyze(
+                        AnalyzeRequest(
+                            question="Should a city replace traffic lights with roundabouts?"
+                        )
+                    )
+
+        self.assertTrue(mocked_completion.called)
+        self.assertEqual(response.provider_used, "openrouter")
+        self.assertIsNone(response.fallback_reason)
 
     def test_invalid_citations_are_detected(self) -> None:
         validity = validate_citations("The answer cites [S1] and [S9].", _state().retrieved_context)
@@ -95,6 +131,11 @@ class GroundingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.consensus, "Use approved tools with confidentiality controls.")
         self.assertTrue(result.citation_validity.valid)
+        self.assertEqual(result.provider_used, "mock")
+        self.assertEqual(
+            result.fallback_reason,
+            "OpenRouter request failed, timed out, or returned invalid data",
+        )
 
     async def test_invalid_openrouter_citation_triggers_single_repair(self) -> None:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False):

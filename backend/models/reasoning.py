@@ -8,6 +8,7 @@ DisagreementKind = Literal[
     "conflicting_recommendation", "differing_confidence", "missing_evidence"
 ]
 Severity = Literal["low", "medium", "high"]
+ProviderUsed = Literal["openrouter", "mock", "azure"]
 
 
 class RetrievedContext(BaseModel):
@@ -87,6 +88,8 @@ class ReasoningState(BaseModel):
     agreement_score: float = Field(default=0.0, ge=0, le=1)
     reasoning_summary: str = ""
     citation_validity: CitationValidity = Field(default_factory=CitationValidity)
+    provider_used: ProviderUsed = "mock"
+    fallback_reason: str | None = None
     metadata: ExecutionMetadata = Field(default_factory=ExecutionMetadata)
 
     def upsert_agent_output(self, output: AgentOutput) -> "ReasoningState":

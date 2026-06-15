@@ -54,6 +54,8 @@ export type AnalyzeResponse = {
     invalid_citations: string[];
     available_sources: string[];
   };
+  provider_used?: "openrouter" | "mock" | "azure";
+  fallback_reason?: string | null;
   metadata?: {
     execution_time_ms: number;
     retrieval_time_ms: number;
