@@ -24,6 +24,7 @@ export type Disagreement = {
 
 export type Source = {
   id?: string;
+  source_id?: string;
   citation_id: string;
   title: string;
   source: string;
@@ -31,6 +32,20 @@ export type Source = {
   snippet: string;
   relevance_score: number;
   retrieved_at?: string;
+};
+
+export type FinalAnswer = {
+  summary: string;
+  recommendation: string;
+  key_findings: Array<{
+    claim: string;
+    source_ids: string[];
+  }>;
+  risks_or_limitations: string[];
+  follow_up_questions: string[];
+  source_quality: "strong" | "partial" | "weak";
+  provider_used: string;
+  live_llm_mode: string;
 };
 
 export type AnalyzeResponse = {
@@ -49,11 +64,16 @@ export type AnalyzeResponse = {
   agent_outputs: AgentOutput[];
   disagreements: Disagreement[];
   sources: Source[];
+  final_answer?: FinalAnswer | null;
   metadata?: {
     execution_time_ms: number;
     retrieval_time_ms: number;
     agent_time_ms: number;
     consensus_time_ms: number;
+    provider_used?: string;
+    live_llm_mode?: string;
+    openrouter_call_count?: number;
+    fallback_reason?: string;
   };
 };
 

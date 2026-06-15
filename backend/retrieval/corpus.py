@@ -335,7 +335,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
             "General AI risk management guidance can help frame uncertainty, objectives, impacts, "
             "stakeholders, controls, and monitoring when the prompt lacks a specific domain."
         ),
-        tags=["decision criteria", "uncertainty", "custom"],
+        tags=["decision criteria", "uncertainty", "custom", "AI screening", "applications"],
         score=0.76,
     ),
     CorpusDocument(
@@ -353,7 +353,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
             "fairness, reliability and safety, privacy and security, inclusiveness, "
             "transparency, and accountability."
         ),
-        tags=["AI governance", "human oversight", "automation governance", "custom"],
+        tags=["AI governance", "human oversight", "automation governance", "screening", "custom"],
         score=0.72,
     ),
     CorpusDocument(
@@ -387,7 +387,7 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
             "Assessment standards emphasize validity evidence, reliability, fairness, "
             "score interpretation, score use, documentation, and examinee protections."
         ),
-        tags=["education", "assessment", "validity", "fairness", "admissions", "custom"],
+        tags=["education", "assessment", "validity", "fairness", "admissions", "medical school", "applications", "screening", "custom"],
         score=0.7,
     ),
     CorpusDocument(
@@ -503,7 +503,7 @@ def documents_for_domain(domain: str, question: str = "") -> list[CorpusDocument
         return _by_ids(selected_ids)
 
     if domain == "custom":
-        if all(term in normalized_question for term in ["medical school"]) and any(
+        if any(term in normalized_question for term in ["medical school", "medical schools"]) and any(
             term in normalized_question
             for term in ["ai", "screen", "applications", "applicants"]
         ):

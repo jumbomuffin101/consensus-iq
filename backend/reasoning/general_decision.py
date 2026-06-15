@@ -72,7 +72,7 @@ def build_general_decision_frame(question: str) -> GeneralDecisionFrame:
             ],
         )
 
-    if all(term in normalized for term in ["university", "medical school"]) and any(
+    if any(term in normalized for term in ["medical school", "medical schools"]) and any(
         term in normalized for term in ["screen", "applications", "applicants"]
     ):
         return GeneralDecisionFrame(

@@ -12,6 +12,7 @@ from models.reasoning import (
     AgentOutput,
     Disagreement,
     ExecutionMetadata,
+    FinalAnswer,
     RetrievedContext,
 )
 from reasoning.graph import ACTIVE_REASONING_ORDER, ConsensusReasoningGraph
@@ -34,6 +35,7 @@ class AnalyzeResponse(BaseModel):
     agent_outputs: list[AgentOutput]
     disagreements: list[Disagreement]
     sources: list[RetrievedContext]
+    final_answer: FinalAnswer | None = None
     metadata: ExecutionMetadata | None = None
 
 
@@ -103,6 +105,12 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     )
     state = state.copy(
         update={
+            "final_answer": state.final_answer.copy(
+                update={
+                    "provider_used": provider_used,
+                    "live_llm_mode": selection.live_llm_mode,
+                }
+            ),
             "metadata": state.metadata.copy(
                 update={
                     "provider_used": provider_used,
@@ -128,6 +136,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         agent_outputs=state.agent_outputs,
         disagreements=state.disagreements,
         sources=state.retrieved_context,
+        final_answer=state.final_answer,
         metadata=state.metadata,
     )
 

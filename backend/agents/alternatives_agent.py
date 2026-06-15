@@ -2,6 +2,10 @@ from agents.prompting import state_context_payload
 from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import AgentOutput, ReasoningState
+from prompts.specialists import (
+    ALTERNATIVES_ANALYST_SYSTEM_PROMPT,
+    SPECIALIST_OUTPUT_INSTRUCTIONS,
+)
 from reasoning.domain import bounded_score, build_domain_profile, prompt_injection_risk
 from reasoning.general_decision import build_general_decision_frame
 
@@ -19,16 +23,10 @@ class AlternativesAnalystNode:
     def __call__(self, state: ReasoningState) -> ReasoningState:
         fallback_output = self._fallback_output(state)
         payload = self.provider.complete_json(
-            system_prompt=(
-                "You are the ConsensusIQ Alternatives Analyst Agent. Focus on "
-                "alternative explanations, exception cases, and different viable "
-                "approaches. Cite retrieved context by citation_id in evidence_refs."
-            ),
+            system_prompt=ALTERNATIVES_ANALYST_SYSTEM_PROMPT,
             user_prompt=(
                 f"{state_context_payload(state)}\n\n"
-                "Return one JSON object with keys: agent, role, stance, "
-                "recommendation, conclusion, rationale, confidence_score, "
-                "evidence_refs, missing_evidence, limitations."
+                f"{SPECIALIST_OUTPUT_INSTRUCTIONS}"
             ),
             fallback=fallback_output.dict(),
             agent_name="alternatives analyst",

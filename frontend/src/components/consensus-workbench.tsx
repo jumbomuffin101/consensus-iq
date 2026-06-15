@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { analyzeQuestion, type AnalyzeResponse } from "@/lib/api";
+import { getProviderDebugInfo } from "@/lib/response-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -206,6 +207,9 @@ function getAgent(result: AnalyzeResponse, name: string) {
 }
 
 function getRecommendationSummary(result: AnalyzeResponse) {
+  if (result.final_answer?.recommendation) {
+    return result.final_answer.recommendation;
+  }
   const [opening] = result.consensus.split("Evidence view:");
   return capitalizeFirst(opening.replace(/^[^:]+:\s*/, "").trim());
 }
@@ -227,6 +231,9 @@ function getDecisionSentence(result: AnalyzeResponse) {
 }
 
 function getRecommendedApproach(result: AnalyzeResponse) {
+  if (result.final_answer?.summary) {
+    return result.final_answer.summary;
+  }
   const evidence = getAgent(result, "Evidence Analyst Agent");
   const alternatives = getAgent(result, "Alternative Solutions Agent");
   const recommendation = evidence?.recommendation || alternatives?.recommendation;
@@ -234,6 +241,10 @@ function getRecommendedApproach(result: AnalyzeResponse) {
 }
 
 function getAvoidWatchOut(result: AnalyzeResponse) {
+  const firstRisk = result.final_answer?.risks_or_limitations?.[0];
+  if (firstRisk) {
+    return capitalizeFirst(firstSentence(firstRisk));
+  }
   const risk = getAgent(result, "Risk Analyst Agent");
   const missingEvidence = result.agent_outputs.flatMap((agent) => agent.missing_evidence);
   const disagreement = result.disagreements[0]?.topic;
@@ -285,10 +296,15 @@ function getUsedSourceRefs(result: AnalyzeResponse) {
 }
 
 function getEvidenceCoverageLabel(result: AnalyzeResponse) {
+  const quality = finalAnswerSourceQuality(result);
+  if (quality === "weak") {
+    return "Source coverage is weak for this prompt. Treat the answer as provisional and verify with stronger evidence.";
+  }
+  if (quality === "partial") {
+    return "Source coverage is partial: useful for framing, but not definitive.";
+  }
   if (!result.sources.length) return "No strong retrieved evidence matched this custom prompt";
-  const averageRelevance = getAverageRelevance(result);
-  if (averageRelevance < 0.55) return "Limited evidence coverage for this prompt";
-  return "Evidence coverage available";
+  return "Strong source coverage available for the main recommendation.";
 }
 
 function getConfidenceLimiters(result: AnalyzeResponse, question: string) {
@@ -359,6 +375,63 @@ function agentsUsingSource(result: AnalyzeResponse, citationId: string) {
     .join(", ");
 }
 
+function sourceIdentifier(source: AnalyzeResponse["sources"][number]) {
+  return source.source_id || source.id || source.citation_id;
+}
+
+function sourceByIdentifier(result: AnalyzeResponse, sourceId: string) {
+  return result.sources.find(
+    (source) =>
+      sourceIdentifier(source) === sourceId ||
+      source.citation_id === sourceId ||
+      source.id === sourceId,
+  );
+}
+
+function finalAnswerSourceQuality(result: AnalyzeResponse) {
+  if (result.final_answer?.source_quality) return result.final_answer.source_quality;
+  if (!result.sources.length) return "weak";
+  const averageRelevance = getAverageRelevance(result);
+  if (result.sources.length >= 2 && getTopRelevance(result) >= 0.7 && averageRelevance >= 0.58) {
+    return "strong";
+  }
+  if (getTopRelevance(result) >= 0.45) return "partial";
+  return "weak";
+}
+
+function sourceQualityTone(quality: "strong" | "partial" | "weak"): "success" | "warning" | "danger" {
+  if (quality === "strong") return "success";
+  if (quality === "partial") return "warning";
+  return "danger";
+}
+
+function getKeyFindings(result: AnalyzeResponse) {
+  if (result.final_answer?.key_findings?.length) {
+    return result.final_answer.key_findings;
+  }
+  return result.agent_outputs.slice(0, 3).map((agent) => ({
+    claim: agent.conclusion,
+    source_ids: agent.evidence_refs,
+  }));
+}
+
+function getRisksOrLimitations(result: AnalyzeResponse, question: string) {
+  if (result.final_answer?.risks_or_limitations?.length) {
+    return result.final_answer.risks_or_limitations;
+  }
+  return getConfidenceLimiters(result, question);
+}
+
+function getFollowUpQuestions(result: AnalyzeResponse) {
+  if (result.final_answer?.follow_up_questions?.length) {
+    return result.final_answer.follow_up_questions;
+  }
+  return result.agent_outputs
+    .flatMap((agent) => agent.missing_evidence)
+    .slice(0, 3)
+    .map((item) => `Can we verify: ${item}`);
+}
+
 function CitationChips({ refs = [], linked = true }: { refs?: string[]; linked?: boolean }) {
   if (!refs.length) {
     return <span className="text-xs text-muted-foreground">No citation</span>;
@@ -384,6 +457,45 @@ function CitationChips({ refs = [], linked = true }: { refs?: string[]; linked?:
           </span>
         ),
       )}
+    </span>
+  );
+}
+
+function SourceIdChips({
+  result,
+  sourceIds = [],
+}: {
+  result: AnalyzeResponse;
+  sourceIds?: string[];
+}) {
+  if (!sourceIds.length) {
+    return <span className="text-xs text-muted-foreground">No source citation</span>;
+  }
+
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {sourceIds.map((sourceId) => {
+        const source = sourceByIdentifier(result, sourceId);
+        const label = source?.citation_id ?? sourceId;
+        const href = source ? `#evidence-${source.citation_id}` : undefined;
+        return href ? (
+          <a
+            key={sourceId}
+            href={href}
+            title={sourceId}
+            className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary underline-offset-4 hover:underline"
+          >
+            {label}
+          </a>
+        ) : (
+          <span
+            key={sourceId}
+            className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 font-mono text-[11px] text-red-200"
+          >
+            {sourceId}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -772,7 +884,7 @@ export function ConsensusWorkbench() {
                   <ExecutiveVerdict result={result} />
 
                   <div className="grid gap-3">
-                    <RecommendationCard result={result} />
+                    <RecommendationCard result={result} question={analyzedQuestion} />
                     <ConfidenceSummary result={result} question={analyzedQuestion} />
                   </div>
                 </>
@@ -806,7 +918,7 @@ export function ConsensusWorkbench() {
           />
         ) : null}
 
-        <RunMetadata timing={displayedTiming} />
+        <RunMetadata timing={displayedTiming} result={result} />
       </div>
     </main>
   );
@@ -822,6 +934,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
+  const sourceQuality = finalAnswerSourceQuality(result);
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -831,9 +944,14 @@ function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
             {getDecisionSentence(result)}
           </h3>
         </div>
-        <Badge tone={result.scenario_label === "Custom" ? "muted" : "success"}>
-          {asTitleCase(result.scenario_label)}
-        </Badge>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <Badge tone={result.scenario_label === "Custom" ? "muted" : "success"}>
+            {asTitleCase(result.scenario_label)}
+          </Badge>
+          <Badge tone={sourceQualityTone(sourceQuality)}>
+            {asTitleCase(sourceQuality)} sources
+          </Badge>
+        </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Metric label="Confidence" value={resultScoreLabel(result.confidence_score)} />
@@ -843,23 +961,42 @@ function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
   );
 }
 
-function RecommendationCard({ result }: { result: AnalyzeResponse }) {
+function RecommendationCard({ result, question }: { result: AnalyzeResponse; question: string }) {
+  const findings = getKeyFindings(result);
+  const risks = getRisksOrLimitations(result, question);
+  const followUps = getFollowUpQuestions(result);
+
   return (
     <div className="rounded-lg border border-border bg-background p-4">
-      <h3 className="mb-3 text-sm font-semibold">Decision Details</h3>
-      <div className="grid gap-3 lg:grid-cols-3">
-        <RecommendationBlock
-          label="Recommendation"
-          value={getRecommendationSummary(result)}
-        />
-        <RecommendationBlock
-          label="Recommended Approach"
-          value={getRecommendedApproach(result)}
-        />
-        <RecommendationBlock
-          label="Avoid / Watch Out For"
-          value={getAvoidWatchOut(result)}
-        />
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">Grounded Answer</h3>
+        <Badge tone={sourceQualityTone(finalAnswerSourceQuality(result))}>
+          {asTitleCase(finalAnswerSourceQuality(result))}
+        </Badge>
+      </div>
+      <div className="grid gap-3">
+        <RecommendationBlock label="Summary" value={getRecommendedApproach(result)} />
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
+            Key Findings
+          </div>
+          <div className="space-y-3">
+            {findings.map((finding) => (
+              <div key={finding.claim} className="grid gap-2">
+                <p className="text-sm leading-6 text-foreground">{capitalizeFirst(finding.claim)}</p>
+                <SourceIdChips result={result} sourceIds={finding.source_ids} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <SummaryList title="Risks Or Limitations" items={risks.slice(0, 4)} marker="-" />
+          <SummaryList
+            title="Follow-Up Questions"
+            items={followUps.length ? followUps.slice(0, 4) : ["No immediate follow-up questions returned."]}
+            marker="?"
+          />
+        </div>
       </div>
     </div>
   );
@@ -1186,8 +1323,15 @@ function RuntimeMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function RunMetadata({ timing }: { timing: ReturnType<typeof getDisplayedTiming> }) {
+function RunMetadata({
+  timing,
+  result,
+}: {
+  timing: ReturnType<typeof getDisplayedTiming>;
+  result: AnalyzeResponse | null;
+}) {
   const [isOpen, setIsOpen] = useState(false);
+  const debugInfo = getProviderDebugInfo(result);
 
   if (!timing) return null;
 
@@ -1215,6 +1359,26 @@ function RunMetadata({ timing }: { timing: ReturnType<typeof getDisplayedTiming>
             <RuntimeMetric label="Agents" value={timing.agents} />
             <RuntimeMetric label="Consensus" value={timing.consensus} />
           </div>
+          {result ? (
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+              <TraceMetric
+                label="Provider"
+                value={debugInfo.provider}
+              />
+              <TraceMetric
+                label="Live LLM Mode"
+                value={debugInfo.liveLlmMode}
+              />
+              <TraceMetric
+                label="OpenRouter Calls"
+                value={String(debugInfo.openRouterCalls)}
+              />
+              <TraceMetric
+                label="Fallback"
+                value={debugInfo.fallbackReason}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

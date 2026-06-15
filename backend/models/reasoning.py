@@ -8,10 +8,28 @@ DisagreementKind = Literal[
     "conflicting_recommendation", "differing_confidence", "missing_evidence"
 ]
 Severity = Literal["low", "medium", "high"]
+SourceQuality = Literal["strong", "partial", "weak"]
+
+
+class KeyFinding(BaseModel):
+    claim: str
+    source_ids: list[str] = Field(default_factory=list)
+
+
+class FinalAnswer(BaseModel):
+    summary: str = ""
+    recommendation: str = ""
+    key_findings: list[KeyFinding] = Field(default_factory=list)
+    risks_or_limitations: list[str] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
+    source_quality: SourceQuality = "weak"
+    provider_used: str = "fast-deterministic"
+    live_llm_mode: str = "off"
 
 
 class RetrievedContext(BaseModel):
     id: str = ""
+    source_id: str = ""
     title: str
     source: str
     snippet: str
@@ -24,6 +42,8 @@ class RetrievedContext(BaseModel):
     def default_id_from_citation(cls, values: dict) -> dict:
         if not values.get("id"):
             values["id"] = values.get("citation_id", "")
+        if not values.get("source_id"):
+            values["source_id"] = values.get("id") or values.get("citation_id", "")
         return values
 
 
@@ -84,6 +104,7 @@ class ReasoningState(BaseModel):
     confidence_score: float = Field(default=0.0, ge=0, le=1)
     agreement_score: float = Field(default=0.0, ge=0, le=1)
     reasoning_summary: str = ""
+    final_answer: FinalAnswer = Field(default_factory=FinalAnswer)
     metadata: ExecutionMetadata = Field(default_factory=ExecutionMetadata)
 
     def upsert_agent_output(self, output: AgentOutput) -> "ReasoningState":

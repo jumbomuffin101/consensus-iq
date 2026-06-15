@@ -1,7 +1,12 @@
 from agents.prompting import agent_outputs_payload, disagreements_payload
 from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
-from models.reasoning import ConsensusJudgment, ReasoningState
+from models.reasoning import ConsensusJudgment, FinalAnswer, KeyFinding, ReasoningState
+from prompts.final_judge import (
+    FINAL_ANSWER_SCHEMA_INSTRUCTIONS,
+    FINAL_JUDGE_SYSTEM_PROMPT,
+    STRICT_CITATION_RETRY_INSTRUCTIONS,
+)
 from reasoning.disagreement import DisagreementDetector
 from reasoning.domain import (
     bounded_score,
@@ -62,38 +67,63 @@ class ConsensusJudgeNode:
         )
 
         state_with_disagreements = state.copy(update={"disagreements": disagreements})
+        fallback_final_answer = self._build_final_answer(
+            state_with_disagreements,
+            profile.domain,
+            confidence_score,
+            agreement_score,
+        )
         fallback_judgment = ConsensusJudgment(
-            consensus=self._build_consensus(state, profile.domain),
+            consensus=fallback_final_answer.recommendation,
             confidence_score=confidence_score,
             agreement_score=agreement_score,
-            reasoning_summary=self._build_reasoning_summary(
-                state_with_disagreements, disagreements, profile.domain
-            ),
+            reasoning_summary=fallback_final_answer.summary,
         )
         payload = self.provider.complete_json(
-            system_prompt=(
-                "You are the ConsensusIQ Consensus Judge. Synthesize independent "
-                "specialist outputs and the disagreement report into a transparent, "
-                "decision-ready recommendation. Preserve uncertainty. Use retrieved "
-                "context citations already present in evidence_refs whenever making "
-                "evidence-based claims."
+            system_prompt=FINAL_JUDGE_SYSTEM_PROMPT,
+            user_prompt=self._final_judge_prompt(
+                state_with_disagreements,
+                profile.domain,
+                confidence_score,
+                agreement_score,
             ),
-            user_prompt=(
-                f"Question: {state.question}\n\n"
-                f"Retrieved context:\n{[item.dict() for item in state.retrieved_context]}\n\n"
-                f"Agent outputs:\n{agent_outputs_payload(state)}\n\n"
-                f"Disagreements:\n{disagreements_payload(state_with_disagreements)}\n\n"
-                "Return JSON with keys: consensus, confidence_score, "
-                "agreement_score, reasoning_summary. Scores must be numbers "
-                "between 0 and 1."
-            ),
-            fallback=fallback_judgment.dict(),
+            fallback=fallback_final_answer.dict(),
             agent_name="consensus judge",
         )
-        try:
-            judgment = ConsensusJudgment.parse_obj(payload)
-        except Exception:
-            judgment = fallback_judgment
+        final_answer = self._parse_final_answer(payload, fallback_final_answer)
+        final_answer, invalid_citations = self._validate_final_answer_citations(
+            final_answer, state.retrieved_context
+        )
+        final_answer = self._cap_source_quality(final_answer, state_with_disagreements)
+        if invalid_citations:
+            retry_payload = self.provider.complete_json(
+                system_prompt=f"{FINAL_JUDGE_SYSTEM_PROMPT} {STRICT_CITATION_RETRY_INSTRUCTIONS}",
+                user_prompt=self._final_judge_prompt(
+                    state_with_disagreements,
+                    profile.domain,
+                    confidence_score,
+                    agreement_score,
+                    invalid_citations=invalid_citations,
+                ),
+                fallback=final_answer.dict(),
+                agent_name="consensus judge",
+            )
+            final_answer = self._parse_final_answer(retry_payload, final_answer)
+            final_answer, invalid_citations = self._validate_final_answer_citations(
+                final_answer, state.retrieved_context
+            )
+            final_answer = self._cap_source_quality(final_answer, state_with_disagreements)
+            if invalid_citations:
+                final_answer = self._remove_invalid_citations(
+                    final_answer, state.retrieved_context
+                )
+
+        judgment = ConsensusJudgment(
+            consensus=final_answer.recommendation,
+            confidence_score=confidence_score,
+            agreement_score=agreement_score,
+            reasoning_summary=final_answer.summary,
+        )
 
         return state.copy(
             update={
@@ -103,8 +133,178 @@ class ConsensusJudgeNode:
                 "confidence_score": confidence_score,
                 "agreement_score": agreement_score,
                 "reasoning_summary": judgment.reasoning_summary,
+                "final_answer": final_answer,
             }
         )
+
+    def _final_judge_prompt(
+        self,
+        state: ReasoningState,
+        domain: str,
+        confidence_score: float,
+        agreement_score: float,
+        invalid_citations: list[str] | None = None,
+    ) -> str:
+        retrieved_sources = [
+            {
+                "source_id": item.source_id,
+                "citation_id": item.citation_id,
+                "title": item.title,
+                "source": item.source,
+                "url": item.url,
+                "snippet": item.snippet,
+                "relevance_score": item.relevance_score,
+            }
+            for item in state.retrieved_context
+        ]
+        invalid_note = (
+            f"\nInvalid source IDs from the previous answer: {invalid_citations}. "
+            "Do not use them."
+            if invalid_citations
+            else ""
+        )
+        return (
+            f"Question: {state.question}\n"
+            f"Scenario/domain: {domain}\n"
+            f"Computed confidence_score: {confidence_score}\n"
+            f"Computed agreement_score: {agreement_score}\n"
+            f"Source quality estimate: {self._source_quality(state)}\n"
+            f"Retrieved_sources:\n{retrieved_sources}\n\n"
+            f"Deterministic specialist outputs:\n{agent_outputs_payload(state)}\n\n"
+            f"Disagreements:\n{disagreements_payload(state)}\n\n"
+            f"{FINAL_ANSWER_SCHEMA_INSTRUCTIONS}{invalid_note}"
+        )
+
+    def _parse_final_answer(
+        self, payload: object, fallback: FinalAnswer
+    ) -> FinalAnswer:
+        try:
+            return FinalAnswer.parse_obj(payload)
+        except Exception:
+            return fallback
+
+    def _validate_final_answer_citations(
+        self, answer: FinalAnswer, sources: list
+    ) -> tuple[FinalAnswer, list[str]]:
+        source_id_lookup = {source.source_id: source.source_id for source in sources}
+        source_id_lookup.update({source.citation_id: source.source_id for source in sources})
+        invalid: list[str] = []
+        normalized_findings: list[KeyFinding] = []
+        for finding in answer.key_findings:
+            normalized_ids: list[str] = []
+            for source_id in finding.source_ids:
+                mapped = source_id_lookup.get(source_id)
+                if mapped:
+                    normalized_ids.append(mapped)
+                else:
+                    invalid.append(source_id)
+            normalized_findings.append(
+                finding.copy(update={"source_ids": list(dict.fromkeys(normalized_ids))})
+            )
+        return answer.copy(update={"key_findings": normalized_findings}), list(dict.fromkeys(invalid))
+
+    def _remove_invalid_citations(
+        self, answer: FinalAnswer, sources: list
+    ) -> FinalAnswer:
+        sanitized, _ = self._validate_final_answer_citations(answer, sources)
+        downgraded_quality = "weak" if not sources else "partial"
+        return sanitized.copy(update={"source_quality": downgraded_quality})
+
+    def _cap_source_quality(
+        self, answer: FinalAnswer, state: ReasoningState
+    ) -> FinalAnswer:
+        retrieval_quality = self._source_quality(state)
+        rank = {"weak": 0, "partial": 1, "strong": 2}
+        if rank[answer.source_quality] <= rank[retrieval_quality]:
+            return answer
+        return answer.copy(update={"source_quality": retrieval_quality})
+
+    def _build_final_answer(
+        self,
+        state: ReasoningState,
+        domain: str,
+        confidence_score: float,
+        agreement_score: float,
+    ) -> FinalAnswer:
+        source_quality = self._source_quality(state)
+        consensus = self._build_consensus(state, domain)
+        findings = self._fallback_key_findings(state)
+        risks = self._fallback_risks(state)
+        if source_quality == "weak":
+            risks = [
+                "Retrieved source coverage is weak, so the recommendation should be treated as provisional.",
+                *risks,
+            ]
+        return FinalAnswer(
+            summary=self._build_reasoning_summary(state, state.disagreements, domain),
+            recommendation=consensus,
+            key_findings=findings,
+            risks_or_limitations=risks[:5],
+            follow_up_questions=self._fallback_follow_up_questions(state),
+            source_quality=source_quality,
+            provider_used="fast-deterministic",
+            live_llm_mode="off",
+        )
+
+    def _fallback_key_findings(self, state: ReasoningState) -> list[KeyFinding]:
+        source_ids = [source.source_id for source in state.retrieved_context]
+        findings: list[KeyFinding] = []
+        for output in state.agent_outputs[:3]:
+            cited_source_ids = [
+                source.source_id
+                for source in state.retrieved_context
+                if source.citation_id in output.evidence_refs
+                or source.source_id in output.evidence_refs
+            ]
+            if not cited_source_ids and source_ids:
+                cited_source_ids = source_ids[:1]
+            findings.append(
+                KeyFinding(
+                    claim=output.conclusion,
+                    source_ids=cited_source_ids,
+                )
+            )
+        if not findings:
+            findings.append(
+                KeyFinding(
+                    claim="The retrieved evidence is insufficient for a strongly sourced recommendation.",
+                    source_ids=[],
+                )
+            )
+        return findings
+
+    def _fallback_risks(self, state: ReasoningState) -> list[str]:
+        risks = []
+        for output in state.agent_outputs:
+            risks.extend(output.missing_evidence[:2])
+            risks.extend(output.limitations[:1])
+        if state.disagreements:
+            risks.extend(item.suggested_resolution for item in state.disagreements[:2])
+        return list(dict.fromkeys(risks)) or [
+            "Local context and implementation constraints may change the decision."
+        ]
+
+    def _fallback_follow_up_questions(self, state: ReasoningState) -> list[str]:
+        missing = []
+        for output in state.agent_outputs:
+            missing.extend(output.missing_evidence)
+        if missing:
+            return [f"Can we verify: {item}" for item in list(dict.fromkeys(missing))[:3]]
+        return [
+            "What decision threshold would make this recommendation actionable?",
+            "Which local constraints or policies could change the answer?",
+        ]
+
+    def _source_quality(self, state: ReasoningState) -> str:
+        if not state.retrieved_context:
+            return "weak"
+        top_relevance = max(source.relevance_score for source in state.retrieved_context)
+        average_relevance = sum(source.relevance_score for source in state.retrieved_context) / len(state.retrieved_context)
+        if len(state.retrieved_context) >= 2 and top_relevance >= 0.7 and average_relevance >= 0.58:
+            return "strong"
+        if top_relevance >= 0.45:
+            return "partial"
+        return "weak"
 
     def _build_consensus(self, state: ReasoningState, domain: str) -> str:
         outputs = {output.agent: output for output in state.agent_outputs}
