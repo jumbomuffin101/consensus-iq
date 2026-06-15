@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from llm.base import LLMUsageTracker
 from llm.factory import create_llm_provider, get_llm_provider_selection
+from llm.mock import MockLLMProvider
 from models.reasoning import (
     AgentOutput,
     Disagreement,
@@ -39,6 +41,7 @@ class ProviderStatusResponse(BaseModel):
     llm_provider: str
     retrieval_provider: str
     live_llm_enabled: bool
+    live_llm_mode: str
     openrouter_configured: bool
     openrouter_model: str
     openrouter_base_url: str
@@ -47,6 +50,8 @@ class ProviderStatusResponse(BaseModel):
 
 
 class ProviderHealthResponse(BaseModel):
+    use_live_llm: bool
+    live_llm_mode: str
     openrouter_configured: bool
     openrouter_model: str
     openrouter_base_url: str
@@ -56,22 +61,64 @@ class ProviderHealthResponse(BaseModel):
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     selection = get_llm_provider_selection()
+    usage_tracker = LLMUsageTracker()
     logger.info("query request received")
     logger.info(
-        "OpenRouter config: OPENROUTER_API_KEY present=%s OPENROUTER_MODEL=%s",
+        "OpenRouter config: OPENROUTER_API_KEY present=%s OPENROUTER_MODEL=%s LIVE_LLM_MODE=%s",
         selection.openrouter_api_key_present,
         selection.openrouter_model,
+        selection.live_llm_mode,
     )
 
-    provider = create_llm_provider()
-    logger.info("provider selected: %s", provider.name)
-    if provider.name == "fast-deterministic":
+    deterministic_provider = MockLLMProvider()
+    live_provider = create_llm_provider(usage_tracker)
+    specialist_provider = deterministic_provider
+    judge_provider = deterministic_provider
+    if selection.live_llm_mode == "all_agents":
+        specialist_provider = live_provider
+        judge_provider = live_provider
+    elif selection.live_llm_mode == "judge_only":
+        judge_provider = live_provider
+
+    logger.info(
+        "provider selected: specialists=%s judge=%s",
+        specialist_provider.name,
+        judge_provider.name,
+    )
+    if specialist_provider.name == "fast-deterministic" and judge_provider.name == "fast-deterministic":
         logger.info(
             "mock selected reason: %s",
-            getattr(provider, "selection_reason", selection.mock_reason),
+            getattr(live_provider, "selection_reason", selection.mock_reason),
         )
 
-    state = ConsensusReasoningGraph(provider).invoke(request.question)
+    state = ConsensusReasoningGraph(
+        specialist_provider=specialist_provider,
+        judge_provider=judge_provider,
+    ).invoke(request.question)
+    provider_used = (
+        f"specialists={specialist_provider.name}; judge={judge_provider.name}"
+    )
+    fallback_reason = usage_tracker.fallback_reason or getattr(
+        live_provider, "selection_reason", ""
+    )
+    state = state.copy(
+        update={
+            "metadata": state.metadata.copy(
+                update={
+                    "provider_used": provider_used,
+                    "live_llm_mode": selection.live_llm_mode,
+                    "openrouter_call_count": usage_tracker.openrouter_call_count,
+                    "fallback_reason": fallback_reason,
+                }
+            )
+        }
+    )
+    logger.info(
+        "OpenRouter usage: agents=%s call_count=%s fallback_reason=%s",
+        usage_tracker.openrouter_agents,
+        usage_tracker.openrouter_call_count,
+        fallback_reason,
+    )
     return AnalyzeResponse(
         consensus=state.consensus,
         scenario_label=state.scenario_label,
@@ -103,7 +150,8 @@ async def provider_status() -> ProviderStatusResponse:
     return ProviderStatusResponse(
         llm_provider=llm_provider,
         retrieval_provider=retrieval_provider,
-        live_llm_enabled=selection.live_llm_enabled,
+        live_llm_enabled=selection.use_live_llm,
+        live_llm_mode=selection.live_llm_mode,
         openrouter_configured=selection.openrouter_api_key_present,
         openrouter_model=selection.openrouter_model,
         openrouter_base_url=selection.openrouter_base_url,
@@ -116,6 +164,8 @@ async def provider_status() -> ProviderStatusResponse:
 async def provider_health() -> ProviderHealthResponse:
     selection = get_llm_provider_selection()
     return ProviderHealthResponse(
+        use_live_llm=selection.use_live_llm,
+        live_llm_mode=selection.live_llm_mode,
         openrouter_configured=selection.openrouter_api_key_present,
         openrouter_model=selection.openrouter_model,
         openrouter_base_url=selection.openrouter_base_url,

@@ -67,6 +67,10 @@ class ExecutionMetadata(BaseModel):
     retrieval_time_ms: int = 0
     agent_time_ms: int = 0
     consensus_time_ms: int = 0
+    provider_used: str = "fast-deterministic"
+    live_llm_mode: str = "off"
+    openrouter_call_count: int = 0
+    fallback_reason: str = ""
 
 
 class ReasoningState(BaseModel):

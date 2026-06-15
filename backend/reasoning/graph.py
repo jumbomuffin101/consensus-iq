@@ -10,6 +10,7 @@ from agents.planner import PlannerNode
 from agents.risk_agent import RiskAnalystNode
 from llm.base import BaseLLMProvider
 from llm.factory import create_llm_provider
+from llm.mock import MockLLMProvider
 from models.reasoning import ReasoningState
 from retrieval import RetrievalNode
 
@@ -36,17 +37,29 @@ class ConsensusReasoningGraph:
     the mocked MVP runnable on Python distributions without native wheels.
     """
 
-    def __init__(self, provider: BaseLLMProvider | None = None) -> None:
-        self.provider = provider or create_llm_provider()
-        logger.info("Active LLM provider for analysis graph: %s", self.provider.name)
+    def __init__(
+        self,
+        provider: BaseLLMProvider | None = None,
+        *,
+        specialist_provider: BaseLLMProvider | None = None,
+        judge_provider: BaseLLMProvider | None = None,
+    ) -> None:
+        default_provider = provider or create_llm_provider()
+        self.specialist_provider = specialist_provider or default_provider
+        self.judge_provider = judge_provider or default_provider
+        logger.info(
+            "Active LLM providers for analysis graph: specialists=%s judge=%s",
+            self.specialist_provider.name,
+            self.judge_provider.name,
+        )
         self.retrieval_node = RetrievalNode()
-        self.planner_node = PlannerNode(self.provider)
+        self.planner_node = PlannerNode(MockLLMProvider())
         self.specialist_nodes = [
-            RiskAnalystNode(self.provider),
-            EvidenceAnalystNode(self.provider),
-            AlternativesAnalystNode(self.provider),
+            RiskAnalystNode(self.specialist_provider),
+            EvidenceAnalystNode(self.specialist_provider),
+            AlternativesAnalystNode(self.specialist_provider),
         ]
-        self.consensus_node = ConsensusJudgeNode(self.provider)
+        self.consensus_node = ConsensusJudgeNode(self.judge_provider)
         node_handlers = {
             "retrieval": self.retrieval_node,
             "planner": self.planner_node,

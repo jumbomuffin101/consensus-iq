@@ -5,18 +5,20 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 from llm.azure_openai import AzureOpenAIProvider
-from llm.base import BaseLLMProvider, ResilientLLMProvider
+from llm.base import BaseLLMProvider, LLMUsageTracker, ResilientLLMProvider
 from llm.mock import MockLLMProvider
 from llm.openrouter import OpenRouterProvider
 
 
 logger = logging.getLogger("consensus_iq.llm")
+SUPPORTED_LIVE_LLM_MODES = {"judge_only", "all_agents", "off"}
 
 
 @dataclass(frozen=True)
 class LLMProviderSelection:
     provider_name: str
-    live_llm_enabled: bool
+    use_live_llm: bool
+    live_llm_mode: str
     openrouter_api_key_present: bool
     openrouter_model: str
     openrouter_base_url: str
@@ -29,7 +31,8 @@ def get_llm_provider_selection() -> LLMProviderSelection:
 
     load_dotenv()
 
-    live_llm_enabled = os.getenv("USE_LIVE_LLM", "false").strip().lower() == "true"
+    use_live_llm = os.getenv("USE_LIVE_LLM", "false").strip().lower() == "true"
+    live_llm_mode = _live_llm_mode(use_live_llm)
     openrouter_api_key_present = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
     openrouter_base_url = os.getenv(
@@ -46,21 +49,28 @@ def get_llm_provider_selection() -> LLMProviderSelection:
         ]
     )
 
-    if not live_llm_enabled:
+    if live_llm_mode == "off":
+        mock_reason = (
+            "LIVE_LLM_MODE is off"
+            if use_live_llm
+            else "USE_LIVE_LLM is not true and LIVE_LLM_MODE is off"
+        )
         return LLMProviderSelection(
             provider_name="fast-deterministic",
-            live_llm_enabled=live_llm_enabled,
+            use_live_llm=use_live_llm,
+            live_llm_mode=live_llm_mode,
             openrouter_api_key_present=openrouter_api_key_present,
             openrouter_model=openrouter_model,
             openrouter_base_url=openrouter_base_url,
             azure_configured=azure_configured,
-            mock_reason="USE_LIVE_LLM is not true",
+            mock_reason=mock_reason,
         )
 
     if azure_configured:
         return LLMProviderSelection(
             provider_name="azure-openai",
-            live_llm_enabled=live_llm_enabled,
+            use_live_llm=use_live_llm,
+            live_llm_mode=live_llm_mode,
             openrouter_api_key_present=openrouter_api_key_present,
             openrouter_model=openrouter_model,
             openrouter_base_url=openrouter_base_url,
@@ -70,7 +80,8 @@ def get_llm_provider_selection() -> LLMProviderSelection:
     if openrouter_api_key_present:
         return LLMProviderSelection(
             provider_name="openrouter",
-            live_llm_enabled=live_llm_enabled,
+            use_live_llm=use_live_llm,
+            live_llm_mode=live_llm_mode,
             openrouter_api_key_present=openrouter_api_key_present,
             openrouter_model=openrouter_model,
             openrouter_base_url=openrouter_base_url,
@@ -79,7 +90,8 @@ def get_llm_provider_selection() -> LLMProviderSelection:
 
     return LLMProviderSelection(
         provider_name="fast-deterministic",
-        live_llm_enabled=live_llm_enabled,
+        use_live_llm=use_live_llm,
+        live_llm_mode=live_llm_mode,
         openrouter_api_key_present=openrouter_api_key_present,
         openrouter_model=openrouter_model,
         openrouter_base_url=openrouter_base_url,
@@ -91,7 +103,9 @@ def get_llm_provider_selection() -> LLMProviderSelection:
     )
 
 
-def create_llm_provider() -> BaseLLMProvider:
+def create_llm_provider(
+    usage_tracker: LLMUsageTracker | None = None,
+) -> BaseLLMProvider:
     """Create the configured provider.
 
     Priority:
@@ -107,11 +121,11 @@ def create_llm_provider() -> BaseLLMProvider:
 
     mock_provider = MockLLMProvider()
     selection = get_llm_provider_selection()
-    live_llm_enabled = selection.live_llm_enabled
-    if not live_llm_enabled:
+    if selection.live_llm_mode == "off":
         mock_provider.selection_reason = selection.mock_reason
         logger.info(
-            "Active LLM provider: FastDeterministic reason=%s",
+            "Active LLM provider: FastDeterministic live_llm_mode=%s reason=%s",
+            selection.live_llm_mode,
             selection.mock_reason,
         )
         return mock_provider
@@ -130,8 +144,13 @@ def create_llm_provider() -> BaseLLMProvider:
                 deployment=deployment,
                 api_version=api_version,
             )
-            logger.info("Active LLM provider: AzureOpenAI")
-            return ResilientLLMProvider(azure_provider, mock_provider)
+            logger.info(
+                "Active LLM provider: AzureOpenAI live_llm_mode=%s",
+                selection.live_llm_mode,
+            )
+            return ResilientLLMProvider(
+                azure_provider, mock_provider, usage_tracker=usage_tracker
+            )
         except Exception as exc:
             azure_init_error = str(exc) or exc.__class__.__name__
             logger.warning("AzureOpenAI provider initialization failed: %s", exc)
@@ -148,8 +167,13 @@ def create_llm_provider() -> BaseLLMProvider:
             base_url=openrouter_base_url,
             app_name=openrouter_app_name,
         )
-        logger.info("Active LLM provider: OpenRouter")
-        return ResilientLLMProvider(openrouter_provider, mock_provider)
+        logger.info(
+            "Active LLM provider: OpenRouter live_llm_mode=%s",
+            selection.live_llm_mode,
+        )
+        return ResilientLLMProvider(
+            openrouter_provider, mock_provider, usage_tracker=usage_tracker
+        )
 
     mock_reason = selection.mock_reason
     if azure_init_error and not openrouter_api_key:
@@ -158,5 +182,21 @@ def create_llm_provider() -> BaseLLMProvider:
             "OPENROUTER_API_KEY is missing"
         )
     mock_provider.selection_reason = mock_reason
-    logger.info("Active LLM provider: FastDeterministic reason=%s", mock_reason)
+    logger.info(
+        "Active LLM provider: FastDeterministic live_llm_mode=%s reason=%s",
+        selection.live_llm_mode,
+        mock_reason,
+    )
     return mock_provider
+
+
+def _live_llm_mode(use_live_llm: bool) -> str:
+    configured = os.getenv("LIVE_LLM_MODE", "").strip().lower()
+    if configured:
+        if configured in SUPPORTED_LIVE_LLM_MODES:
+            return configured
+        logger.warning(
+            "Unsupported LIVE_LLM_MODE=%s; defaulting to judge_only", configured
+        )
+        return "judge_only" if use_live_llm else "off"
+    return "judge_only" if use_live_llm else "off"
