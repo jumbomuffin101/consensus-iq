@@ -46,9 +46,13 @@ class OpenRouterProvider(BaseLLMProvider):
         for attempt in range(self.max_retries + 1):
             try:
                 start = time.perf_counter()
-                logger.info("OpenRouter request start: agent=%s model=%s", agent_name, self.model)
+                logger.info(
+                    "OpenRouter request start: agent=%s model=%s",
+                    agent_name,
+                    self.model,
+                )
                 payload = self._build_payload(system_prompt, user_prompt)
-                body = self._send(payload)
+                body = self._send(payload, agent_name)
                 content = self._extract_message_content(self._decode_json(body))
                 parsed = self._parse_json(content)
                 latency_ms = int((time.perf_counter() - start) * 1000)
@@ -61,7 +65,7 @@ class OpenRouterProvider(BaseLLMProvider):
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    "OpenRouter request failed: agent=%s reason=%s",
+                    "OpenRouter request failed: agent=%s safe_error=%s",
                     agent_name,
                     exc,
                 )
@@ -90,7 +94,7 @@ class OpenRouterProvider(BaseLLMProvider):
             "temperature": 0.2,
         }
 
-    def _send(self, payload: dict[str, Any]) -> str:
+    def _send(self, payload: dict[str, Any], agent_name: str) -> str:
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -106,12 +110,19 @@ class OpenRouterProvider(BaseLLMProvider):
             with urllib.request.urlopen(
                 request, timeout=self.timeout_seconds
             ) as response:
+                logger.info(
+                    "OpenRouter request status: agent=%s status_code=%s",
+                    agent_name,
+                    response.status,
+                )
                 return response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")[:500]
-            raise LLMProviderError(
-                f"OpenRouter request failed with status {exc.code}: {detail}"
-            ) from exc
+            logger.info(
+                "OpenRouter request status: agent=%s status_code=%s",
+                agent_name,
+                exc.code,
+            )
+            raise LLMProviderError("OpenRouter HTTP request failed.") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise LLMProviderError("OpenRouter request failed.") from exc
 

@@ -1,20 +1,22 @@
+import logging
 import os
 
 from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from llm.factory import create_llm_provider
+from llm.factory import create_llm_provider, get_llm_provider_selection
 from models.reasoning import (
     AgentOutput,
     Disagreement,
     ExecutionMetadata,
     RetrievedContext,
 )
-from reasoning.graph import analyze_question
+from reasoning.graph import ACTIVE_REASONING_ORDER, ConsensusReasoningGraph
 from retrieval.factory import create_retrieval_provider
 
 router = APIRouter()
+logger = logging.getLogger("consensus_iq.api")
 
 
 class AnalyzeRequest(BaseModel):
@@ -38,12 +40,38 @@ class ProviderStatusResponse(BaseModel):
     retrieval_provider: str
     live_llm_enabled: bool
     openrouter_configured: bool
+    openrouter_model: str
+    openrouter_base_url: str
+    active_reasoning_order: list[str]
     azure_search_configured: bool
+
+
+class ProviderHealthResponse(BaseModel):
+    openrouter_configured: bool
+    openrouter_model: str
+    openrouter_base_url: str
+    active_reasoning_order: list[str]
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
-    state = analyze_question(request.question)
+    selection = get_llm_provider_selection()
+    logger.info("query request received")
+    logger.info(
+        "OpenRouter config: OPENROUTER_API_KEY present=%s OPENROUTER_MODEL=%s",
+        selection.openrouter_api_key_present,
+        selection.openrouter_model,
+    )
+
+    provider = create_llm_provider()
+    logger.info("provider selected: %s", provider.name)
+    if provider.name == "fast-deterministic":
+        logger.info(
+            "mock selected reason: %s",
+            getattr(provider, "selection_reason", selection.mock_reason),
+        )
+
+    state = ConsensusReasoningGraph(provider).invoke(request.question)
     return AnalyzeResponse(
         consensus=state.consensus,
         scenario_label=state.scenario_label,
@@ -60,8 +88,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 @router.get("/provider-status", response_model=ProviderStatusResponse)
 async def provider_status() -> ProviderStatusResponse:
     load_dotenv()
-    live_llm_enabled = os.getenv("USE_LIVE_LLM", "false").strip().lower() == "true"
-    openrouter_configured = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+    selection = get_llm_provider_selection()
     azure_search_configured = all(
         os.getenv(name, "").strip()
         for name in [
@@ -76,9 +103,23 @@ async def provider_status() -> ProviderStatusResponse:
     return ProviderStatusResponse(
         llm_provider=llm_provider,
         retrieval_provider=retrieval_provider,
-        live_llm_enabled=live_llm_enabled,
-        openrouter_configured=openrouter_configured,
+        live_llm_enabled=selection.live_llm_enabled,
+        openrouter_configured=selection.openrouter_api_key_present,
+        openrouter_model=selection.openrouter_model,
+        openrouter_base_url=selection.openrouter_base_url,
+        active_reasoning_order=ACTIVE_REASONING_ORDER,
         azure_search_configured=azure_search_configured,
+    )
+
+
+@router.get("/health/providers", response_model=ProviderHealthResponse)
+async def provider_health() -> ProviderHealthResponse:
+    selection = get_llm_provider_selection()
+    return ProviderHealthResponse(
+        openrouter_configured=selection.openrouter_api_key_present,
+        openrouter_model=selection.openrouter_model,
+        openrouter_base_url=selection.openrouter_base_url,
+        active_reasoning_order=ACTIVE_REASONING_ORDER,
     )
 
 

@@ -58,11 +58,11 @@ class ResilientLLMProvider(BaseLLMProvider):
             )
         except Exception as exc:
             logger.warning(
-                "LLM provider %s failed for agent=%s; falling back to %s: %s",
+                "LLM provider %s failed for agent=%s; provider selected=%s reason=%s",
                 self.primary.name,
                 agent_name,
                 self.fallback_provider.name,
-                exc,
+                _safe_error_message(exc),
             )
             return self.fallback_provider.complete_json(
                 system_prompt=system_prompt,
@@ -70,3 +70,8 @@ class ResilientLLMProvider(BaseLLMProvider):
                 fallback=fallback,
                 agent_name=agent_name,
             )
+
+
+def _safe_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    return message or exc.__class__.__name__

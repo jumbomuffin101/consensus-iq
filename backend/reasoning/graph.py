@@ -20,6 +20,13 @@ class GraphEnvelope(TypedDict):
 
 logger = logging.getLogger("consensus_iq.reasoning")
 
+ACTIVE_REASONING_ORDER = [
+    "retrieval",
+    "planner",
+    "specialists_parallel",
+    "consensus_judge",
+]
+
 
 class ConsensusReasoningGraph:
     """Owns graph orchestration and state transitions.
@@ -40,12 +47,13 @@ class ConsensusReasoningGraph:
             AlternativesAnalystNode(self.provider),
         ]
         self.consensus_node = ConsensusJudgeNode(self.provider)
-        self.nodes = [
-            ("retrieval", self.retrieval_node),
-            ("planner", self.planner_node),
-            ("specialists_parallel", self._run_specialists_parallel),
-            ("consensus_judge", self.consensus_node),
-        ]
+        node_handlers = {
+            "retrieval": self.retrieval_node,
+            "planner": self.planner_node,
+            "specialists_parallel": self._run_specialists_parallel,
+            "consensus_judge": self.consensus_node,
+        }
+        self.nodes = [(name, node_handlers[name]) for name in ACTIVE_REASONING_ORDER]
         self._compiled_graph = self._compile_langgraph()
 
     def invoke(self, question: str) -> ReasoningState:
