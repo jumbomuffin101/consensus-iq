@@ -6,7 +6,7 @@ from llm.base import BaseLLMProvider
 class MockLLMProvider(BaseLLMProvider):
     """Deterministic provider used for local development and Azure fallback."""
 
-    name = "mock"
+    name = "fast-deterministic"
 
     def complete_json(
         self,

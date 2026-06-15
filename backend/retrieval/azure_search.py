@@ -20,7 +20,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
 
     name = "azure-ai-search"
     source_label = "Azure AI Search / Foundry IQ Search Service"
-    fallback_on_empty = False
+    fallback_on_empty = True
 
     def __init__(
         self,

@@ -339,6 +339,75 @@ CURATED_PUBLIC_CORPUS: list[CorpusDocument] = [
         score=0.76,
     ),
     CorpusDocument(
+        id="custom-microsoft-responsible-ai",
+        title="Responsible AI governance checkpoints",
+        domain="custom",
+        source="Microsoft Responsible AI",
+        url="https://www.microsoft.com/en-us/ai/responsible-ai",
+        snippet=(
+            "AI-assisted decisions should preserve accountability, reliability, privacy, "
+            "transparency, and human oversight before deployment."
+        ),
+        content=(
+            "Microsoft Responsible AI resources describe principles and practices for "
+            "fairness, reliability and safety, privacy and security, inclusiveness, "
+            "transparency, and accountability."
+        ),
+        tags=["AI governance", "human oversight", "automation governance", "custom"],
+        score=0.72,
+    ),
+    CorpusDocument(
+        id="custom-education-assessment-validity",
+        title="Education assessment validity and fairness",
+        domain="custom",
+        source="Standards for Educational and Psychological Testing",
+        url="https://www.testingstandards.net/open-access-files.html",
+        snippet=(
+            "Consequential education decisions need validity, reliability, fairness, "
+            "documented score use, and protections for affected applicants or students."
+        ),
+        content=(
+            "Assessment standards emphasize validity evidence, reliability, fairness, "
+            "score interpretation, score use, documentation, and examinee protections."
+        ),
+        tags=["education", "assessment", "validity", "fairness", "admissions", "custom"],
+        score=0.7,
+    ),
+    CorpusDocument(
+        id="custom-ftc-data-security",
+        title="Privacy and data minimization for sensitive decisions",
+        domain="custom",
+        source="Federal Trade Commission",
+        url="https://www.ftc.gov/business-guidance/privacy-security",
+        snippet=(
+            "Sensitive data workflows should minimize data collection, protect personal "
+            "information, and define accountability before automation is introduced."
+        ),
+        content=(
+            "FTC business guidance covers privacy, security, data minimization, consumer "
+            "protection, and organizational safeguards for personal information."
+        ),
+        tags=["privacy", "data security", "data minimization", "automation", "custom"],
+        score=0.68,
+    ),
+    CorpusDocument(
+        id="custom-fhwa-roundabouts",
+        title="Roundabout safety and intersection suitability",
+        domain="custom",
+        source="Federal Highway Administration",
+        url="https://highways.dot.gov/safety/intersection-safety/intersection-types/roundabouts",
+        snippet=(
+            "Roundabouts can improve safety at suitable intersections, but selection "
+            "depends on traffic volumes, geometry, users, cost, and local operating context."
+        ),
+        content=(
+            "FHWA roundabout resources discuss intersection safety, design considerations, "
+            "operations, crash reduction potential, and context-specific suitability."
+        ),
+        tags=["roundabouts", "traffic lights", "intersection", "transportation", "custom"],
+        score=0.72,
+    ),
+    CorpusDocument(
         id="custom-azure-responsible-innovation",
         title="Comparable option analysis",
         domain="custom",
@@ -398,6 +467,35 @@ def documents_for_domain(domain: str, question: str = "") -> list[CorpusDocument
             "clinical-emergency-neurology-parallel-treatment",
         ]
         return _by_ids(selected_ids)
+
+    if domain == "custom":
+        if all(term in normalized_question for term in ["medical school"]) and any(
+            term in normalized_question
+            for term in ["ai", "screen", "applications", "applicants"]
+        ):
+            return _by_ids(
+                [
+                    "custom-nist-ai-rmf",
+                    "custom-education-assessment-validity",
+                    "custom-microsoft-responsible-ai",
+                ]
+            )
+        if any(term in normalized_question for term in ["traffic lights", "roundabouts", "intersection"]):
+            return _by_ids(
+                [
+                    "custom-fhwa-roundabouts",
+                    "custom-nist-ai-rmf",
+                    "custom-azure-responsible-innovation",
+                ]
+            )
+        if any(term in normalized_question for term in ["privacy", "data", "automation", "ai"]):
+            return _by_ids(
+                [
+                    "custom-nist-ai-rmf",
+                    "custom-microsoft-responsible-ai",
+                    "custom-ftc-data-security",
+                ]
+            )
 
     documents = [document for document in CURATED_PUBLIC_CORPUS if document.domain == domain]
     if documents:

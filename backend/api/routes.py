@@ -36,6 +36,7 @@ class AnalyzeResponse(BaseModel):
 class ProviderStatusResponse(BaseModel):
     llm_provider: str
     retrieval_provider: str
+    live_llm_enabled: bool
     openrouter_configured: bool
     azure_search_configured: bool
 
@@ -59,6 +60,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 @router.get("/provider-status", response_model=ProviderStatusResponse)
 async def provider_status() -> ProviderStatusResponse:
     load_dotenv()
+    live_llm_enabled = os.getenv("USE_LIVE_LLM", "false").strip().lower() == "true"
     openrouter_configured = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     azure_search_configured = all(
         os.getenv(name, "").strip()
@@ -74,6 +76,7 @@ async def provider_status() -> ProviderStatusResponse:
     return ProviderStatusResponse(
         llm_provider=llm_provider,
         retrieval_provider=retrieval_provider,
+        live_llm_enabled=live_llm_enabled,
         openrouter_configured=openrouter_configured,
         azure_search_configured=azure_search_configured,
     )
@@ -85,7 +88,7 @@ def _display_llm_provider(provider_name: str) -> str:
         return "AzureOpenAI"
     if "openrouter" in normalized:
         return "OpenRouter"
-    return "Mock"
+    return "FastDeterministic"
 
 
 def _display_retrieval_provider(provider_name: str) -> str:

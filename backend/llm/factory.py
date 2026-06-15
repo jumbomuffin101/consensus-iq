@@ -16,9 +16,9 @@ def create_llm_provider() -> BaseLLMProvider:
     """Create the configured provider.
 
     Priority:
-    1. Azure OpenAI when fully configured.
-    2. OpenRouter when OPENROUTER_API_KEY is configured.
-    3. Deterministic mock provider.
+    1. Fast deterministic provider unless USE_LIVE_LLM=true.
+    2. Azure OpenAI when fully configured and live LLMs are enabled.
+    3. OpenRouter when configured and live LLMs are enabled.
 
     Live providers are wrapped with a mock fallback so transient API errors never
     crash the reasoning pipeline.
@@ -27,6 +27,11 @@ def create_llm_provider() -> BaseLLMProvider:
     load_dotenv()
 
     mock_provider = MockLLMProvider()
+    live_llm_enabled = os.getenv("USE_LIVE_LLM", "false").strip().lower() == "true"
+    if not live_llm_enabled:
+        logger.info("Active LLM provider: FastDeterministic")
+        return mock_provider
+
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
     api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
@@ -62,5 +67,5 @@ def create_llm_provider() -> BaseLLMProvider:
         logger.info("Active LLM provider: OpenRouter")
         return ResilientLLMProvider(openrouter_provider, mock_provider)
 
-    logger.info("Active LLM provider: Mock")
+    logger.info("Active LLM provider: FastDeterministic")
     return mock_provider
