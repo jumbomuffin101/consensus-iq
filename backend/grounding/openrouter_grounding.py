@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 
+from config import azure_openai_configured, live_llm_enabled, prefer_azure_openai
 from grounding.citations import (
     strip_invalid_citations,
     validate_citations,
@@ -26,6 +27,11 @@ async def apply_optional_openrouter_grounding(state: ReasoningState) -> Reasonin
     load_dotenv()
     if not os.getenv("OPENROUTER_API_KEY", "").strip():
         logger.info("reasoning provider used: mock")
+        return validate_state_citations(state)
+
+    if azure_openai_configured() and prefer_azure_openai():
+        provider_name = "azure" if live_llm_enabled() else "mock"
+        logger.info("reasoning provider used: %s", provider_name)
         return validate_state_citations(state)
 
     if not state.retrieved_context:

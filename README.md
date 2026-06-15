@@ -97,6 +97,7 @@ Backend health checks:
 
 ```bash
 GET http://localhost:8000/health
+GET http://localhost:8000/health/providers
 GET http://localhost:8000/ready
 ```
 
@@ -145,6 +146,7 @@ OPENROUTER_API_KEY=
 OPENROUTER_MODEL=openai/gpt-4o-mini
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_APP_NAME=ConsensusIQ
+PREFER_AZURE_OPENAI=false
 ```
 
 Frontend:
@@ -157,6 +159,7 @@ Notes:
 
 - `USE_LIVE_LLM=false` is the default demo mode. It keeps the app fast and deterministic.
 - OpenRouter is optional. When `OPENROUTER_API_KEY` is present, the backend can run one grounded refinement pass over retrieved sources. If OpenRouter fails or returns invalid output, the deterministic answer is returned.
+- If both Azure OpenAI and OpenRouter are configured, OpenRouter is used for grounding unless `PREFER_AZURE_OPENAI=true`.
 - `USE_LIVE_LLM=true` is only needed if you want live LLM calls inside every graph agent.
 - Azure Search is optional for local development. If it is not configured, the backend uses the curated public corpus fallback.
 
@@ -198,7 +201,16 @@ Backend:
 
 - Deploy `backend/` to Render.
 - Set Azure Search environment variables if using live retrieval.
-- Keep `USE_LIVE_LLM=false` for the stable demo path.
+- Set `FRONTEND_ORIGIN` to the Vercel preview/production origin and local dev origins, comma-separated.
+- Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` when using OpenRouter grounding.
+- Keep `USE_LIVE_LLM=false` for the stable demo path unless every graph agent should call a live LLM.
+
+Deployment verification:
+
+- Backend health: `https://<render-backend>/health`
+- Provider wiring: `https://<render-backend>/health/providers`
+- Frontend env: `NEXT_PUBLIC_API_URL=https://<render-backend>`
+- Backend CORS env: `FRONTEND_ORIGIN=https://<vercel-preview>,https://<vercel-production>,http://localhost:3000,http://127.0.0.1:3000`
 
 Additional deployment notes are in `docs/deployment.md`.
 

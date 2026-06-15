@@ -62,29 +62,51 @@ export type AnalyzeResponse = {
   };
 };
 
-function getApiBaseUrl() {
+const LOCAL_DEV_API_URL = "http://localhost:8000";
+
+export function normalizeApiBaseUrl(value: string) {
+  return value.trim().replace(/\/+$/, "");
+}
+
+export function getApiBaseUrl() {
   const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (configuredUrl) {
-    return configuredUrl.replace(/\/$/, "");
+    return normalizeApiBaseUrl(configuredUrl);
   }
 
-  return "https://consensusiq-api.onrender.com";
+  if (process.env.NODE_ENV !== "production") {
+    return LOCAL_DEV_API_URL;
+  }
+
+  throw new Error(
+    "NEXT_PUBLIC_API_URL is not configured. Set NEXT_PUBLIC_API_URL to the deployed FastAPI backend URL, for example https://consensusiq-api.onrender.com.",
+  );
 }
 
 export async function analyzeQuestion(
   question: string,
 ): Promise<AnalyzeResponse> {
+  const apiBaseUrl = getApiBaseUrl();
+  await checkBackendHealth(apiBaseUrl);
+
   let response: Response;
   try {
-    const apiBaseUrl = getApiBaseUrl();
     response = await fetch(`${apiBaseUrl}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
     });
-  } catch {
+  } catch (error) {
     throw new Error(
-      "Unable to reach the ConsensusIQ API. Confirm the backend is deployed and NEXT_PUBLIC_API_URL is set.",
+      [
+        "Unable to reach the ConsensusIQ API.",
+        `Configured API base URL: ${apiBaseUrl}`,
+        "Failure type: network/CORS",
+        "Expected env var: NEXT_PUBLIC_API_URL",
+        error instanceof Error ? `Details: ${error.message}` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
     );
   }
 
@@ -104,4 +126,37 @@ export async function analyzeQuestion(
   }
 
   return response.json();
+}
+
+async function checkBackendHealth(apiBaseUrl: string) {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}/health`, {
+      method: "GET",
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new Error(
+      [
+        "Backend health check failed.",
+        `Configured API base URL: ${apiBaseUrl}`,
+        "Failure type: network/CORS",
+        "Expected endpoint: /health",
+        error instanceof Error ? `Details: ${error.message}` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      [
+        "Backend health check failed.",
+        `Configured API base URL: ${apiBaseUrl}`,
+        "Failure type: non-200",
+        `Status: ${response.status}`,
+      ].join(" "),
+    );
+  }
 }

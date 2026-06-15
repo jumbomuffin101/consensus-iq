@@ -1,9 +1,7 @@
-import os
-
-from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from config import azure_search_configured, live_llm_enabled, openrouter_configured
 from grounding.openrouter_grounding import apply_optional_openrouter_grounding
 from llm.factory import create_llm_provider
 from models.reasoning import (
@@ -64,28 +62,17 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 
 @router.get("/provider-status", response_model=ProviderStatusResponse)
 async def provider_status() -> ProviderStatusResponse:
-    load_dotenv()
-    live_llm_enabled = os.getenv("USE_LIVE_LLM", "false").strip().lower() == "true"
-    openrouter_configured = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
-    azure_search_configured = all(
-        os.getenv(name, "").strip()
-        for name in [
-            "AZURE_SEARCH_ENDPOINT",
-            "AZURE_SEARCH_API_KEY",
-            "AZURE_SEARCH_INDEX_NAME",
-        ]
-    )
-
     llm_provider = _display_llm_provider(create_llm_provider().name)
-    if openrouter_configured and llm_provider == "FastDeterministic":
+    is_openrouter_configured = openrouter_configured()
+    if is_openrouter_configured and llm_provider == "FastDeterministic":
         llm_provider = "FastDeterministic + OpenRouterGrounding"
     retrieval_provider = _display_retrieval_provider(create_retrieval_provider().name)
     return ProviderStatusResponse(
         llm_provider=llm_provider,
         retrieval_provider=retrieval_provider,
-        live_llm_enabled=live_llm_enabled,
-        openrouter_configured=openrouter_configured,
-        azure_search_configured=azure_search_configured,
+        live_llm_enabled=live_llm_enabled(),
+        openrouter_configured=is_openrouter_configured,
+        azure_search_configured=azure_search_configured(),
     )
 
 

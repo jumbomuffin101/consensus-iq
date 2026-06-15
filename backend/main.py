@@ -7,12 +7,27 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router
+from config import (
+    active_reasoning_order,
+    azure_openai_configured,
+    azure_search_configured,
+    openrouter_configured,
+    openrouter_model,
+    parse_frontend_origins,
+)
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger("consensus_iq.api")
+logger.info(
+    "provider startup config openrouter_configured=%s openrouter_model=%s azure_configured=%s azure_search_configured=%s",
+    openrouter_configured(),
+    openrouter_model(),
+    azure_openai_configured(),
+    azure_search_configured(),
+)
 
 app = FastAPI(
     title="ConsensusIQ API",
@@ -22,13 +37,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        origin.strip()
-        for origin in os.getenv(
-            "FRONTEND_ORIGIN", "http://localhost:3000, http://127.0.0.1:3000"
-        ).split(",")
-        if origin.strip()
-    ],
+    allow_origins=parse_frontend_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,7 +64,18 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "service": "ConsensusIQ API"}
+
+
+@app.get("/health/providers")
+async def health_providers() -> dict[str, object]:
+    return {
+        "azure_configured": azure_openai_configured(),
+        "azure_search_configured": azure_search_configured(),
+        "openrouter_configured": openrouter_configured(),
+        "openrouter_model": openrouter_model(),
+        "active_reasoning_order": active_reasoning_order(),
+    }
 
 
 @app.get("/ready")
