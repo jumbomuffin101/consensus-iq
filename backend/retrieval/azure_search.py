@@ -134,6 +134,8 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
             domain_results = self._query_once(question, detected_domain)
             if domain_results:
                 return domain_results
+            if detected_domain == "sports_injury":
+                return []
         return self._query_once(question, None)
 
     def _query_once(

@@ -22,6 +22,56 @@ def build_general_decision_frame(question: str) -> GeneralDecisionFrame:
     normalized = question.lower()
     topic = question.strip().rstrip("?.!") or "this decision"
 
+    if any(
+        term in normalized
+        for term in [
+            "strain",
+            "sprain",
+            "injury",
+            "pain",
+            "quad",
+            "quadriceps",
+            "hamstring",
+            "ankle",
+            "knee",
+            "soccer",
+            "basketball",
+            "workout",
+            "gym",
+            "play through",
+        ]
+    ):
+        return GeneralDecisionFrame(
+            topic=topic,
+            objective=(
+                "Decide whether the athlete can safely return to sport without "
+                "worsening the suspected muscle or joint injury."
+            ),
+            recommendation=(
+                "Do not play soccer until pain-free walking, stairs, jogging, "
+                "cutting, sprinting, and sport-specific movements are tolerated."
+            ),
+            key_risk=(
+                "Playing through pain can worsen the strain, increase bleeding or "
+                "tissue damage, delay recovery, and make cutting or sprinting unsafe."
+            ),
+            evidence_limitation=(
+                "No strong retrieved sports-medicine source matched this prompt, so "
+                "the recommendation relies on conservative return-to-play reasoning."
+            ),
+            alternative_approaches=(
+                "Rest from painful play, use modified activity that does not provoke "
+                "symptoms, progress through rehab and sport-specific drills, and seek "
+                "medical evaluation if symptoms are severe, worsening, bruised, weak, "
+                "or persistent."
+            ),
+            missing_assumptions=[
+                "Severity of pain at rest, walking, stairs, jogging, cutting, and sprinting.",
+                "Bruising, swelling, weakness, range-of-motion loss, or a popping sensation.",
+                "Exam findings, time since injury, and whether symptoms are improving or worsening.",
+            ],
+        )
+
     if all(term in normalized for term in ["university", "medical school"]) and any(
         term in normalized for term in ["screen", "applications", "applicants"]
     ):
@@ -88,22 +138,22 @@ def build_general_decision_frame(question: str) -> GeneralDecisionFrame:
 
     return GeneralDecisionFrame(
         topic=topic,
-        objective=f"Clarify the goal, stakeholders, success criteria, and reversibility for '{topic}'.",
+        objective=f"Clarify the practical goal, affected people, constraints, and decision criteria for '{topic}'.",
         recommendation=(
-            f"Treat '{topic}' as a conditional decision: run a small, measurable, reversible "
-            "trial before broad adoption."
+            f"Use a cautious decision-support approach for '{topic}': compare realistic options, "
+            "check the most important risks, and choose the lowest-regret next step."
         ),
         key_risk=(
-            f"The main risk is committing to '{topic}' before benefits, harms, owners, "
-            "and rollback criteria are explicit."
+            f"The main risk is giving a confident answer about '{topic}' before the relevant facts, "
+            "constraints, and downside scenarios are clear."
         ),
         evidence_limitation=(
             "Retrieved evidence is limited and generic, so it can frame the decision but "
             "cannot by itself justify a high-confidence recommendation."
         ),
         alternative_approaches=(
-            "Compare doing nothing, a limited pilot, a controlled rollout with review gates, "
-            "and a higher-commitment implementation."
+            "Compare the conservative option, a monitored middle path, and a higher-commitment "
+            "option using the same success criteria and stop conditions."
         ),
         missing_assumptions=[
             "Decision owner, success metric, and minimum evidence threshold.",

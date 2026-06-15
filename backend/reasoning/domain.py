@@ -15,6 +15,22 @@ class DomainProfile:
 
 
 DOMAIN_KEYWORDS = {
+    "sports_injury": [
+        "strain",
+        "sprain",
+        "injury",
+        "pain",
+        "quad",
+        "quadriceps",
+        "hamstring",
+        "ankle",
+        "knee",
+        "soccer",
+        "basketball",
+        "workout",
+        "gym",
+        "play through",
+    ],
     "clinical": [
         "patient",
         "woman",
@@ -104,15 +120,20 @@ SCENARIO_LABELS = {
     "research": "Research",
     "enterprise": "Enterprise",
     "finance": "Finance",
+    "sports_injury": "Health / Sports Injury",
     "custom": "Custom",
 }
 
 
 def classify_domain(question: str) -> str:
     normalized = question.lower()
+    if any(keyword in normalized for keyword in DOMAIN_KEYWORDS["sports_injury"]):
+        return "sports_injury"
+
     scores = {
         domain: sum(1 for keyword in keywords if keyword in normalized)
         for domain, keywords in DOMAIN_KEYWORDS.items()
+        if domain != "sports_injury"
     }
     best_domain, best_score = max(scores.items(), key=lambda item: item[1])
     if best_score < 2:
@@ -137,6 +158,7 @@ def build_domain_profile(state: ReasoningState) -> DomainProfile:
             "clinical": 0.9,
             "cybersecurity": 0.82,
             "finance": 0.8,
+            "sports_injury": 0.78,
             "enterprise": 0.68,
             "research": 0.62,
             "custom": 0.55,
@@ -147,6 +169,7 @@ def build_domain_profile(state: ReasoningState) -> DomainProfile:
             "research": "validity, bias, evaluator reliability, and measurement design",
             "enterprise": "stakeholders, governance, confidentiality, and operational risk",
             "finance": "diversification, suitability, liquidity, and downside risk",
+            "sports_injury": "return-to-play safety, symptom severity, function, and injury progression",
             "custom": "decision criteria, uncertainty, and evidence gaps",
         }[domain],
     )
@@ -192,6 +215,7 @@ def _question_ambiguity(question: str, domain: str) -> float:
         "research": 0.14,
         "enterprise": 0.12,
         "finance": 0.16,
+        "sports_injury": 0.12,
         "custom": 0.18,
     }[domain]
     return min(0.9, ambiguity)

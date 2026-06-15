@@ -531,6 +531,9 @@ def documents_for_domain(domain: str, question: str = "") -> list[CorpusDocument
                 ]
             )
 
+    if domain == "sports_injury":
+        return []
+
     documents = [document for document in CURATED_PUBLIC_CORPUS if document.domain == domain]
     if documents:
         return documents[:3]

@@ -110,7 +110,7 @@ function getConfidenceFactors(result: AnalyzeResponse, question: string) {
 
   const factors = [
     result.sources.length === 0
-      ? "No strong retrieved evidence found"
+      ? "No strong retrieved evidence matched this custom prompt"
       : averageRelevance >= 0.85
       ? "High source relevance supports stronger grounding"
       : averageRelevance >= 0.7
@@ -168,7 +168,7 @@ function getConfidenceCalculation(result: AnalyzeResponse, question: string) {
   ].filter(Boolean) as string[];
 
   const negativeFactors = [
-    result.sources.length === 0 ? "No strong retrieved evidence found" : null,
+    result.sources.length === 0 ? "No strong retrieved evidence matched this custom prompt" : null,
     result.sources.length > 0 && averageRelevance < 0.55 ? "Limited evidence coverage" : null,
     missingEvidenceCount > 0 ? "Missing evidence remains unresolved" : null,
     highRiskDomain ? "High-risk domain uncertainty" : null,
@@ -285,7 +285,7 @@ function getUsedSourceRefs(result: AnalyzeResponse) {
 }
 
 function getEvidenceCoverageLabel(result: AnalyzeResponse) {
-  if (!result.sources.length) return "No strong retrieved evidence found";
+  if (!result.sources.length) return "No strong retrieved evidence matched this custom prompt";
   const averageRelevance = getAverageRelevance(result);
   if (averageRelevance < 0.55) return "Limited evidence coverage for this prompt";
   return "Evidence coverage available";
@@ -298,7 +298,7 @@ function getConfidenceLimiters(result: AnalyzeResponse, question: string) {
   const averageRelevance = getAverageRelevance(result);
 
   const limiters = [
-    result.sources.length === 0 ? "No strong retrieved evidence found" : null,
+    result.sources.length === 0 ? "No strong retrieved evidence matched this custom prompt" : null,
     result.sources.length > 0 && averageRelevance < 0.55 ? "Limited evidence coverage" : null,
     result.disagreements.length ? "Agent disagreement remains unresolved" : null,
     missingEvidence.length ? "Evidence gaps require additional grounding" : null,
@@ -996,7 +996,7 @@ function RetrievedEvidence({
           ))
         ) : (
           <div className="rounded-lg border border-border bg-background p-4 text-sm leading-6 text-muted-foreground lg:col-span-3">
-            No strong retrieved evidence found. ConsensusIQ still runs the agents, but confidence is reduced and the recommendation should be treated as decision-support reasoning rather than source-grounded certainty.
+            No strong retrieved evidence matched this custom prompt. ConsensusIQ still runs the agents, but confidence is reduced and the recommendation should be treated as decision-support reasoning rather than source-grounded certainty.
           </div>
         )}
       </div>

@@ -159,7 +159,7 @@ class EvidenceAnalystNode:
                 "Evidence analysis can only identify what would need to be verified before treating the recommendation as grounded.",
             ]
             domain_content["missing"] = [
-                "No strong retrieved evidence found.",
+                "No strong retrieved evidence matched this custom prompt.",
                 *domain_content["missing"],
             ]
 

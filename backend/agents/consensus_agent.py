@@ -118,6 +118,7 @@ class ConsensusJudgeNode:
             "research": "Research evaluation consensus",
             "enterprise": "Enterprise risk consensus",
             "finance": "Finance consensus",
+            "sports_injury": "Health / Sports Injury consensus",
             "custom": "Custom decision consensus",
         }[domain]
 
@@ -151,6 +152,8 @@ class ConsensusJudgeNode:
             recommendation = "avoid single-LLM grading dependence until validity, bias, reliability, and appeal checks are demonstrated"
         elif domain == "finance":
             recommendation = "avoid putting all savings into one AI stock and prefer diversified, liquidity-aware investing"
+        elif domain == "sports_injury":
+            recommendation = build_general_decision_frame(state.question).recommendation
         else:
             recommendation = build_general_decision_frame(state.question).recommendation
         recommendation = recommendation.rstrip(".")

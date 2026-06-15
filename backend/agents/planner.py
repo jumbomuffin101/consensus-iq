@@ -159,6 +159,34 @@ class PlannerNode:
                 ),
             ]
 
+        if domain == "sports_injury":
+            return [
+                ReasoningTask(
+                    id="task-1",
+                    description="Assess whether pain, weakness, bruising, swelling, or function loss makes play unsafe.",
+                    owner="Risk Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-2",
+                    description="Evaluate available return-to-play evidence and identify evidence gaps.",
+                    owner="Evidence Analyst Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-3",
+                    description="Compare rest, modified activity, rehab progression, and medical evaluation.",
+                    owner="Alternative Solutions Agent",
+                    priority="high",
+                ),
+                ReasoningTask(
+                    id="task-4",
+                    description="Define functional checkpoints before returning to cutting, sprinting, and sport-specific play.",
+                    owner="Evidence Analyst Agent",
+                    priority="medium",
+                ),
+            ]
+
         if domain == "enterprise":
             return [
                 ReasoningTask(

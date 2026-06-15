@@ -35,7 +35,14 @@ export type Source = {
 
 export type AnalyzeResponse = {
   consensus: string;
-  scenario_label: "Clinical" | "Cybersecurity" | "Research" | "Enterprise" | "Finance" | "Custom";
+  scenario_label:
+    | "Clinical"
+    | "Cybersecurity"
+    | "Research"
+    | "Enterprise"
+    | "Finance"
+    | "Health / Sports Injury"
+    | "Custom";
   confidence_score: number;
   agreement_score: number;
   reasoning_summary: string;

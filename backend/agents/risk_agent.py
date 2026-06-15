@@ -175,7 +175,7 @@ class RiskAnalystNode:
                 "Risk analysis is therefore based on decision structure, downside exposure, and missing-evidence constraints rather than source grounding.",
             ]
             domain_content["missing"] = [
-                "No strong retrieved evidence found.",
+                "No strong retrieved evidence matched this custom prompt.",
                 *domain_content["missing"],
             ]
 

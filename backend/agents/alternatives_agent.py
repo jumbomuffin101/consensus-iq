@@ -151,7 +151,7 @@ class AlternativesAnalystNode:
                 "Alternative analysis remains useful, but options should be validated against better source coverage before acting.",
             ]
             domain_content["missing"] = [
-                "No strong retrieved evidence found.",
+                "No strong retrieved evidence matched this custom prompt.",
                 *domain_content["missing"],
             ]
 
