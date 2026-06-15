@@ -3,6 +3,7 @@ from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import AgentOutput, ReasoningState
 from reasoning.domain import bounded_score, build_domain_profile, prompt_injection_risk
+from reasoning.general_decision import build_general_decision_frame
 
 
 class EvidenceAnalystNode:
@@ -138,17 +139,19 @@ class EvidenceAnalystNode:
                     "missing": ["Current client contract language and vendor data-retention guarantees."],
                 }
         else:
-            topic = state.question.strip().rstrip("?.!")
+            frame = build_general_decision_frame(state.question)
             domain_content = {
-                "recommendation": f"Use the retrieved context and explicit success criteria before deciding on '{topic}'.",
+                "recommendation": frame.recommendation,
                 "conclusion": (
-                    f"The available evidence can frame '{topic}', but more question-specific sources would improve certainty."
+                    f"The available evidence can frame '{frame.topic}', but it does not provide prompt-specific validation. "
+                    f"{frame.evidence_limitation}"
                 ),
                 "rationale": [
+                    f"Objective: {frame.objective}",
                     f"{refs[0] if refs else 'S1'} is the highest-relevance retrieved context.",
-                    f"{refs[1] if len(refs) > 1 else 'S2'} supports measured checkpoints.",
+                    frame.evidence_limitation,
                 ],
-                "missing": ["More domain-specific citations and explicit success metrics."],
+                "missing": frame.missing_assumptions,
             }
         if not refs:
             domain_content["rationale"] = [

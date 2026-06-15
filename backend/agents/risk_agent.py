@@ -3,6 +3,7 @@ from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import AgentOutput, ReasoningState
 from reasoning.domain import bounded_score, build_domain_profile, prompt_injection_risk
+from reasoning.general_decision import build_general_decision_frame
 
 
 class RiskAnalystNode:
@@ -157,20 +158,16 @@ class RiskAnalystNode:
                     ],
                 }
         else:
-            topic = state.question.strip().rstrip("?.!")
+            frame = build_general_decision_frame(state.question)
             domain_content = {
-                "recommendation": f"Treat the question '{topic}' as conditional until risk owners and failure criteria are explicit.",
-                "conclusion": (
-                    f"The main risk is overcommitting on '{topic}' before the decision criteria, downside exposure, and reversal plan are clear."
-                ),
+                "recommendation": frame.recommendation,
+                "conclusion": frame.key_risk,
                 "rationale": [
-                    f"{refs[0] if refs else 'S1'} provides the strongest available context.",
-                    f"{refs[-1] if refs else 'S3'} points to risk controls and mitigation needs.",
+                    f"Objective: {frame.objective}",
+                    frame.evidence_limitation,
+                    f"{refs[0] if refs else 'S1'} provides the strongest available decision-support context.",
                 ],
-                "missing": [
-                    "Decision owner, success threshold, and rollback criteria.",
-                    "Quantified downside if the recommendation is wrong.",
-                ],
+                "missing": frame.missing_assumptions,
             }
         if not refs:
             domain_content["rationale"] = [

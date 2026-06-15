@@ -9,6 +9,7 @@ from reasoning.domain import (
     missing_information_load,
     prompt_injection_risk,
 )
+from reasoning.general_decision import build_general_decision_frame
 
 
 class ConsensusJudgeNode:
@@ -151,7 +152,8 @@ class ConsensusJudgeNode:
         elif domain == "finance":
             recommendation = "avoid putting all savings into one AI stock and prefer diversified, liquidity-aware investing"
         else:
-            recommendation = self._custom_recommendation(state.question)
+            recommendation = build_general_decision_frame(state.question).recommendation
+        recommendation = recommendation.rstrip(".")
 
         uncertainty_note = ""
         if prompt_injection_risk(state.question):
@@ -177,12 +179,7 @@ class ConsensusJudgeNode:
         )
 
     def _custom_recommendation(self, question: str) -> str:
-        topic = question.strip().rstrip("?.!")
-        return (
-            f"evaluate this custom proposal: '{topic or 'this proposal'}' as a conditional decision: clarify the goal, "
-            "expected benefits, participants or stakeholders, downside risks, and a "
-            "small reversible trial before making a broad commitment"
-        )
+        return build_general_decision_frame(question).recommendation
 
     def _evidence_quality_score(
         self, state: ReasoningState, profile_evidence_quality: float

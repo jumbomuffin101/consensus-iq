@@ -29,7 +29,7 @@ class AzureSearchRetrievalProvider(BaseRetrievalProvider):
         api_key: str,
         index_name: str,
         api_version: str = "2024-07-01",
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 3.0,
         top_k: int = 5,
         minimum_relevance_score: float = 0.3,
     ) -> None:

@@ -3,6 +3,7 @@ from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import AgentOutput, ReasoningState
 from reasoning.domain import bounded_score, build_domain_profile, prompt_injection_risk
+from reasoning.general_decision import build_general_decision_frame
 
 
 class AlternativesAnalystNode:
@@ -131,17 +132,18 @@ class AlternativesAnalystNode:
                     "missing": ["Data classification scheme and approved secure AI tooling options."],
                 }
         else:
-            topic = state.question.strip().rstrip("?.!")
+            frame = build_general_decision_frame(state.question)
             domain_content = {
-                "recommendation": f"Compare conservative, reversible, and high-commitment options for '{topic}' before deciding.",
+                "recommendation": frame.alternative_approaches,
                 "conclusion": (
-                    f"This custom question should not inherit a preset recommendation; alternatives for '{topic}' should come from the user's constraints."
+                    f"This custom question should compare concrete options for '{frame.topic}' instead of inheriting a preset recommendation."
                 ),
                 "rationale": [
+                    f"Objective: {frame.objective}",
+                    frame.alternative_approaches,
                     f"{refs[0] if refs else 'S2'} supports checkpointed alternatives.",
-                    "Explicit option comparison prevents premature convergence.",
                 ],
-                "missing": ["Available options, constraints, and stakeholder tolerance for risk."],
+                "missing": frame.missing_assumptions,
             }
         if not refs:
             domain_content["rationale"] = [
