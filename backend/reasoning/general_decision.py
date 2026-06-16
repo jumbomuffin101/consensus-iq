@@ -22,6 +22,45 @@ def build_general_decision_frame(question: str) -> GeneralDecisionFrame:
     normalized = question.lower()
     topic = question.strip().rstrip("?.!") or "this decision"
 
+    if any(term in normalized for term in ["dog", "cat", "puppy", "kitten", "pet", "vet", "veterinarian"]) and any(
+        term in normalized
+        for term in ["sleeping", "sleepy", "tired", "lethargic", "lethargy", "too much", "not active"]
+    ):
+        return GeneralDecisionFrame(
+            topic=topic,
+            objective=(
+                "Decide whether unusual pet sleepiness or lethargy needs veterinary triage."
+            ),
+            recommendation=(
+                "If the sleepiness is unusual, lasts more than a day, is severe, "
+                "or comes with appetite loss, vomiting, diarrhea, breathing trouble, "
+                "weakness, pale gums, pain, collapse, toxin exposure, or trouble "
+                "waking normally, contact a veterinarian promptly; if symptoms are "
+                "sudden or severe, go to an emergency vet."
+            ),
+            key_risk=(
+                "Lethargy can be a nonspecific sign of illness, pain, toxin exposure, "
+                "infection, dehydration, or other urgent problems, so severity and "
+                "associated symptoms matter more than sleep duration alone."
+            ),
+            evidence_limitation=(
+                "No strong pet-health sources were retrieved for this custom prompt, "
+                "so this is safe triage guidance rather than a source-grounded diagnosis."
+            ),
+            alternative_approaches=(
+                "Monitor briefly only if the pet wakes normally, is eating and drinking, "
+                "breathing comfortably, acting close to baseline, and has no red flags; "
+                "otherwise call a vet for triage."
+            ),
+            missing_assumptions=[
+                "Age and breed.",
+                "How long the sleepiness has been going on and whether it is unusual.",
+                "Eating, drinking, urination, and stool changes.",
+                "Vomiting, diarrhea, breathing changes, pain, weakness, gum color, collapse, or seizure.",
+                "Medications, toxin exposure, recent injury, and baseline activity level.",
+            ],
+        )
+
     if any(
         term in normalized
         for term in [

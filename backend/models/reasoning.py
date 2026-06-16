@@ -9,6 +9,37 @@ DisagreementKind = Literal[
 ]
 Severity = Literal["low", "medium", "high"]
 SourceQuality = Literal["strong", "partial", "weak"]
+CustomDomain = Literal[
+    "clinical_human",
+    "pet_health",
+    "enterprise_risk",
+    "research_eval",
+    "finance",
+    "legal",
+    "education",
+    "general_decision",
+    "unknown",
+]
+CustomIntent = Literal[
+    "triage",
+    "compare_options",
+    "evaluate_risk",
+    "summarize",
+    "plan",
+    "diagnose_problem",
+    "other",
+]
+CustomUrgency = Literal["low", "moderate", "high", "emergency_possible"]
+
+
+class CustomPromptIntake(BaseModel):
+    domain: CustomDomain = "general_decision"
+    intent: CustomIntent = "other"
+    urgency: CustomUrgency = "low"
+    missing_information: list[str] = Field(default_factory=list)
+    retrieval_queries: list[str] = Field(default_factory=list)
+    answer_style: str = "Concise practical decision guidance."
+    confidence: float = Field(default=0.0, ge=0, le=1)
 
 
 class KeyFinding(BaseModel):
@@ -91,10 +122,12 @@ class ExecutionMetadata(BaseModel):
     live_llm_mode: str = "off"
     openrouter_call_count: int = 0
     fallback_reason: str = ""
+    custom_intake: CustomPromptIntake | None = None
 
 
 class ReasoningState(BaseModel):
     question: str
+    custom_intake: CustomPromptIntake | None = None
     scenario_label: str = "Custom"
     retrieved_context: list[RetrievedContext] = Field(default_factory=list)
     reasoning_tasks: list[ReasoningTask] = Field(default_factory=list)

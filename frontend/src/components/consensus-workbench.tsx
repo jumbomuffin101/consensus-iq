@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 
 import { analyzeQuestion, type AnalyzeResponse } from "@/lib/api";
-import { getProviderDebugInfo } from "@/lib/response-utils";
+import {
+  getProviderDebugInfo,
+  getScoreDisplay,
+  getSourceQuality as getResponseSourceQuality,
+} from "@/lib/response-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,10 +81,6 @@ const progressSteps = [
 function asPercent(value: number) {
   if (!Number.isFinite(value)) return "0%";
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-
-function resultScoreLabel(value: number) {
-  return asPercent(value);
 }
 
 function asTitleCase(value: string) {
@@ -389,14 +389,16 @@ function sourceByIdentifier(result: AnalyzeResponse, sourceId: string) {
 }
 
 function finalAnswerSourceQuality(result: AnalyzeResponse) {
-  if (result.final_answer?.source_quality) return result.final_answer.source_quality;
-  if (!result.sources.length) return "weak";
-  const averageRelevance = getAverageRelevance(result);
-  if (result.sources.length >= 2 && getTopRelevance(result) >= 0.7 && averageRelevance >= 0.58) {
-    return "strong";
-  }
-  if (getTopRelevance(result) >= 0.45) return "partial";
-  return "weak";
+  return getResponseSourceQuality(result);
+}
+
+function customIntake(result: AnalyzeResponse) {
+  return result.metadata?.custom_intake ?? null;
+}
+
+function domainDetectedLabel(result: AnalyzeResponse) {
+  const intake = customIntake(result);
+  return intake?.domain ? asTitleCase(intake.domain.replace(/_/g, " ")) : result.scenario_label;
 }
 
 function sourceQualityTone(quality: "strong" | "partial" | "weak"): "success" | "warning" | "danger" {
@@ -430,6 +432,12 @@ function getFollowUpQuestions(result: AnalyzeResponse) {
     .flatMap((agent) => agent.missing_evidence)
     .slice(0, 3)
     .map((item) => `Can we verify: ${item}`);
+}
+
+function getCriticalMissingInfo(result: AnalyzeResponse) {
+  const intakeMissing = customIntake(result)?.missing_information ?? [];
+  if (intakeMissing.length) return intakeMissing.slice(0, 8);
+  return result.agent_outputs.flatMap((agent) => agent.missing_evidence).slice(0, 6);
 }
 
 function CitationChips({ refs = [], linked = true }: { refs?: string[]; linked?: boolean }) {
@@ -925,10 +933,11 @@ export function ConsensusWorkbench() {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
+  const valueClass = value.length > 12 ? "text-xl" : "text-3xl";
   return (
     <div className="rounded-lg border border-border bg-background p-4">
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
-      <div className="mt-2 font-mono text-3xl font-semibold">{value}</div>
+      <div className={`mt-2 break-words font-mono ${valueClass} font-semibold`}>{value}</div>
     </div>
   );
 }
@@ -954,8 +963,14 @@ function ExecutiveVerdict({ result }: { result: AnalyzeResponse }) {
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Metric label="Confidence" value={resultScoreLabel(result.confidence_score)} />
-        <Metric label="Agreement" value={resultScoreLabel(result.agreement_score)} />
+        <Metric
+          label="Confidence"
+          value={getScoreDisplay(result, "confidence")}
+        />
+        <Metric
+          label="Agreement"
+          value={getScoreDisplay(result, "agreement")}
+        />
       </div>
     </div>
   );
@@ -965,6 +980,7 @@ function RecommendationCard({ result, question }: { result: AnalyzeResponse; que
   const findings = getKeyFindings(result);
   const risks = getRisksOrLimitations(result, question);
   const followUps = getFollowUpQuestions(result);
+  const missingInfo = getCriticalMissingInfo(result);
 
   return (
     <div className="rounded-lg border border-border bg-background p-4">
@@ -975,7 +991,8 @@ function RecommendationCard({ result, question }: { result: AnalyzeResponse; que
         </Badge>
       </div>
       <div className="grid gap-3">
-        <RecommendationBlock label="Summary" value={getRecommendedApproach(result)} />
+        <RecommendationBlock label="Recommended Next Step" value={getRecommendationSummary(result)} />
+        <RecommendationBlock label="Why" value={getRecommendedApproach(result)} />
         <div className="rounded-md border border-border bg-card p-3">
           <div className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
             Key Findings
@@ -989,6 +1006,9 @@ function RecommendationCard({ result, question }: { result: AnalyzeResponse; que
             ))}
           </div>
         </div>
+        {missingInfo.length ? (
+          <SummaryList title="Critical Missing Info" items={missingInfo} marker="?" />
+        ) : null}
         <div className="grid gap-3 md:grid-cols-2">
           <SummaryList title="Risks Or Limitations" items={risks.slice(0, 4)} marker="-" />
           <SummaryList
@@ -1361,6 +1381,8 @@ function RunMetadata({
           </div>
           {result ? (
             <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+              <TraceMetric label="Domain Detected" value={domainDetectedLabel(result)} />
+              <TraceMetric label="Source Coverage" value={asTitleCase(finalAnswerSourceQuality(result))} />
               <TraceMetric
                 label="Provider"
                 value={debugInfo.provider}

@@ -15,6 +15,8 @@ from models.reasoning import (
     FinalAnswer,
     RetrievedContext,
 )
+from reasoning.custom_intake import classify_custom_prompt, deterministic_custom_intake
+from reasoning.domain import classify_domain
 from reasoning.graph import ACTIVE_REASONING_ORDER, ConsensusReasoningGraph
 from retrieval.factory import create_retrieval_provider
 
@@ -74,6 +76,21 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 
     deterministic_provider = MockLLMProvider()
     live_provider = create_llm_provider(usage_tracker)
+    custom_intake = None
+    if classify_domain(request.question) == "custom":
+        deterministic_intake = deterministic_custom_intake(request.question)
+        custom_intake = (
+            classify_custom_prompt(request.question, live_provider)
+            if selection.live_llm_mode != "off" and deterministic_intake.confidence < 0.45
+            else deterministic_intake
+        )
+        logger.info(
+            "custom prompt intake: domain=%s intent=%s urgency=%s confidence=%s",
+            custom_intake.domain,
+            custom_intake.intent,
+            custom_intake.urgency,
+            custom_intake.confidence,
+        )
     specialist_provider = deterministic_provider
     judge_provider = deterministic_provider
     if selection.live_llm_mode == "all_agents":
@@ -96,7 +113,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     state = ConsensusReasoningGraph(
         specialist_provider=specialist_provider,
         judge_provider=judge_provider,
-    ).invoke(request.question)
+    ).invoke(request.question, custom_intake=custom_intake)
     provider_used = (
         f"specialists={specialist_provider.name}; judge={judge_provider.name}"
     )
@@ -117,6 +134,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
                     "live_llm_mode": selection.live_llm_mode,
                     "openrouter_call_count": usage_tracker.openrouter_call_count,
                     "fallback_reason": fallback_reason,
+                    "custom_intake": custom_intake,
                 }
             )
         }

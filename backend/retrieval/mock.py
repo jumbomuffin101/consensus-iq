@@ -1,6 +1,7 @@
 import re
 
 from models.reasoning import RetrievedContext
+from reasoning.custom_intake import deterministic_custom_intake
 from reasoning.domain import classify_domain
 from retrieval.base import BaseRetrievalProvider
 from retrieval.corpus import CURATED_PUBLIC_CORPUS, CorpusDocument, documents_for_domain
@@ -41,6 +42,10 @@ class MockRetrievalProvider(BaseRetrievalProvider):
         )
 
     def _rank_documents(self, question: str, domain: str) -> list[CorpusDocument]:
+        if domain == "custom":
+            intake = deterministic_custom_intake(question)
+            if intake.domain in {"pet_health", "clinical_human", "legal", "unknown"}:
+                return []
         candidates = documents_for_domain(domain, question)
         if not candidates:
             return []

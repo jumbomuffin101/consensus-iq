@@ -2,6 +2,7 @@ from agents.prompting import agent_outputs_payload, disagreements_payload
 from llm.base import BaseLLMProvider
 from llm.mock import MockLLMProvider
 from models.reasoning import ConsensusJudgment, FinalAnswer, KeyFinding, ReasoningState
+from policies.custom_domains import policy_for_domain
 from prompts.final_judge import (
     FINAL_ANSWER_SCHEMA_INSTRUCTIONS,
     FINAL_JUDGE_SYSTEM_PROMPT,
@@ -72,12 +73,6 @@ class ConsensusJudgeNode:
             profile.domain,
             confidence_score,
             agreement_score,
-        )
-        fallback_judgment = ConsensusJudgment(
-            consensus=fallback_final_answer.recommendation,
-            confidence_score=confidence_score,
-            agreement_score=agreement_score,
-            reasoning_summary=fallback_final_answer.summary,
         )
         payload = self.provider.complete_json(
             system_prompt=FINAL_JUDGE_SYSTEM_PROMPT,
@@ -166,6 +161,8 @@ class ConsensusJudgeNode:
         return (
             f"Question: {state.question}\n"
             f"Scenario/domain: {domain}\n"
+            f"Custom intake:\n{state.custom_intake.dict() if state.custom_intake else None}\n"
+            f"Custom domain policy:\n{policy_for_domain(state.custom_intake.domain).__dict__ if state.custom_intake else None}\n"
             f"Computed confidence_score: {confidence_score}\n"
             f"Computed agreement_score: {agreement_score}\n"
             f"Source quality estimate: {self._source_quality(state)}\n"
@@ -227,12 +224,15 @@ class ConsensusJudgeNode:
         agreement_score: float,
     ) -> FinalAnswer:
         source_quality = self._source_quality(state)
-        consensus = self._build_consensus(state, domain)
+        if state.custom_intake and state.custom_intake.domain == "pet_health":
+            consensus = build_general_decision_frame(state.question).recommendation
+        else:
+            consensus = self._build_consensus(state, domain)
         findings = self._fallback_key_findings(state)
         risks = self._fallback_risks(state)
         if source_quality == "weak":
             risks = [
-                "Retrieved source coverage is weak, so the recommendation should be treated as provisional.",
+                "No strong sources were retrieved for this custom prompt. Treat the recommendation as provisional.",
                 *risks,
             ]
         return FinalAnswer(
@@ -321,6 +321,8 @@ class ConsensusJudgeNode:
             "sports_injury": "Health / Sports Injury consensus",
             "custom": "Custom decision consensus",
         }[domain]
+        if state.custom_intake and state.custom_intake.domain == "pet_health":
+            domain_opening = "Pet health triage"
 
         clauses = []
         if evidence:
@@ -331,7 +333,9 @@ class ConsensusJudgeNode:
             clauses.append(f"Alternative view: {alternatives.recommendation}")
 
         question = state.question.lower()
-        if domain == "clinical" and any(
+        if state.custom_intake and state.custom_intake.domain == "pet_health":
+            recommendation = build_general_decision_frame(state.question).recommendation
+        elif domain == "clinical" and any(
             term in question for term in ["stroke", "thrombolytic", "aphasia", "weakness"]
         ):
             recommendation = (
@@ -363,9 +367,14 @@ class ConsensusJudgeNode:
             uncertainty_note = " The request for certainty is treated as a reliability risk, so the answer preserves uncertainty rather than claiming 100% confidence."
 
         if not state.retrieved_context:
-            grounding_note = (
-                " No strong retrieved evidence was found, so the final recommendation is decision-support reasoning with explicit evidence gaps rather than source-grounded certainty."
-            )
+            if state.custom_intake and state.custom_intake.domain == "pet_health":
+                grounding_note = (
+                    " No strong sources were retrieved for this custom prompt, so this is safe triage guidance rather than a source-grounded diagnosis."
+                )
+            else:
+                grounding_note = (
+                    " No strong sources were retrieved for this custom prompt, so the final recommendation is provisional and should be verified with stronger evidence."
+                )
         else:
             average_relevance = sum(item.relevance_score for item in state.retrieved_context) / len(state.retrieved_context)
             grounding_note = (
@@ -430,6 +439,15 @@ class ConsensusJudgeNode:
     def _build_reasoning_summary(
         self, state: ReasoningState, disagreements: list, domain: str
     ) -> str:
+        if state.custom_intake and state.custom_intake.domain == "pet_health":
+            return (
+                "This is a pet-health triage question. No diagnosis can be made from "
+                "the prompt alone, so the safest answer is to look for red flags, "
+                "check how unusual and prolonged the sleepiness is, and contact a "
+                "veterinarian promptly if symptoms are severe, prolonged, or paired "
+                "with appetite, breathing, pain, gum-color, collapse, toxin, vomiting, "
+                "or diarrhea concerns."
+            )
         task_summary = "; ".join(task.description for task in state.reasoning_tasks)
         disagreement_summary = (
             "; ".join(item.topic for item in disagreements)

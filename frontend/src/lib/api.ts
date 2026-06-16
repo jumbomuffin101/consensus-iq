@@ -48,6 +48,32 @@ export type FinalAnswer = {
   live_llm_mode: string;
 };
 
+export type CustomPromptIntake = {
+  domain:
+    | "clinical_human"
+    | "pet_health"
+    | "enterprise_risk"
+    | "research_eval"
+    | "finance"
+    | "legal"
+    | "education"
+    | "general_decision"
+    | "unknown";
+  intent:
+    | "triage"
+    | "compare_options"
+    | "evaluate_risk"
+    | "summarize"
+    | "plan"
+    | "diagnose_problem"
+    | "other";
+  urgency: "low" | "moderate" | "high" | "emergency_possible";
+  missing_information: string[];
+  retrieval_queries: string[];
+  answer_style: string;
+  confidence: number;
+};
+
 export type AnalyzeResponse = {
   consensus: string;
   scenario_label:
@@ -74,6 +100,7 @@ export type AnalyzeResponse = {
     live_llm_mode?: string;
     openrouter_call_count?: number;
     fallback_reason?: string;
+    custom_intake?: CustomPromptIntake | null;
   };
 };
 

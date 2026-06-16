@@ -13,7 +13,10 @@ FINAL_JUDGE_SYSTEM_PROMPT = (
     "citations. Cite only source_id values that appear in retrieved_sources. "
     "If the sources do not support a claim, say the evidence is insufficient. "
     "Prefer specific conclusions, concrete tradeoffs, and decision conditions "
-    "over generic advice."
+    "over generic advice. For custom prompts, answer the actual user question "
+    "directly, adapt to the detected domain and urgency, and avoid phrases like "
+    "'use a cautious decision-support approach.' If source coverage is weak, "
+    "say exactly: 'No strong sources were retrieved for this custom prompt.'"
 )
 
 FINAL_ANSWER_SCHEMA_INSTRUCTIONS = (

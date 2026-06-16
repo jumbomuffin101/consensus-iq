@@ -7,6 +7,17 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from api.routes import AnalyzeRequest, analyze  # noqa: E402
+from reasoning.custom_intake import deterministic_custom_intake  # noqa: E402
+
+
+class FallbackOpenRouterProvider:
+    name = "openrouter"
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    def complete_json(self, **kwargs):
+        return kwargs["fallback"]
 
 
 class InvalidThenValidOpenRouterProvider:
@@ -107,6 +118,49 @@ class GroundedFinalAnswerTests(unittest.TestCase):
         valid_source_ids = {source.source_id for source in response.sources}
         for finding in response.final_answer.key_findings:
             self.assertTrue(set(finding.source_ids) <= valid_source_ids)
+
+    def test_pet_health_prompt_classified_as_triage(self):
+        intake = deterministic_custom_intake(
+            "Should I take my dog to the vet if he is sleeping too much?"
+        )
+
+        self.assertEqual(intake.domain, "pet_health")
+        self.assertEqual(intake.intent, "triage")
+        self.assertIn("age", intake.missing_information)
+        self.assertGreaterEqual(intake.confidence, 0.8)
+
+    def test_pet_health_prompt_has_weak_sources_and_practical_answer(self):
+        response = self._analyze(
+            "Should I take my dog to the vet if he is sleeping too much?",
+            provider_cls=FallbackOpenRouterProvider,
+        )
+
+        self.assertEqual(response.metadata.custom_intake.domain, "pet_health")
+        self.assertEqual(response.metadata.custom_intake.intent, "triage")
+        self.assertEqual(response.final_answer.source_quality, "weak")
+        self.assertEqual(response.sources, [])
+        self.assertLessEqual(response.metadata.openrouter_call_count, 1)
+        self.assertIn("veterinarian", response.final_answer.recommendation.lower())
+        self.assertIn("emergency vet", response.final_answer.recommendation.lower())
+        self.assertNotIn("cautious decision-support approach", response.final_answer.recommendation.lower())
+        for finding in response.final_answer.key_findings:
+            self.assertEqual(finding.source_ids, [])
+
+    def test_weak_irrelevant_retrieval_does_not_fake_source_grounding(self):
+        response = self._analyze(
+            "Should I take my dog to the vet if he is sleeping too much?",
+            live_llm_mode="off",
+        )
+
+        self.assertEqual(response.final_answer.source_quality, "weak")
+        self.assertFalse(response.sources)
+        self.assertTrue(
+            any(
+                "No strong sources were retrieved for this custom prompt" in item
+                or "source coverage is weak" in item.lower()
+                for item in response.final_answer.risks_or_limitations
+            )
+        )
 
     def _analyze(
         self,

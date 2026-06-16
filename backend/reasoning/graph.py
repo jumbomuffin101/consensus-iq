@@ -11,7 +11,7 @@ from agents.risk_agent import RiskAnalystNode
 from llm.base import BaseLLMProvider
 from llm.factory import create_llm_provider
 from llm.mock import MockLLMProvider
-from models.reasoning import ReasoningState
+from models.reasoning import CustomPromptIntake, ReasoningState
 from retrieval import RetrievalNode
 
 
@@ -69,9 +69,13 @@ class ConsensusReasoningGraph:
         self.nodes = [(name, node_handlers[name]) for name in ACTIVE_REASONING_ORDER]
         self._compiled_graph = self._compile_langgraph()
 
-    def invoke(self, question: str) -> ReasoningState:
+    def invoke(
+        self, question: str, custom_intake: CustomPromptIntake | None = None
+    ) -> ReasoningState:
         start = perf_counter()
-        initial_state = ReasoningState(question=question.strip())
+        initial_state = ReasoningState(
+            question=question.strip(), custom_intake=custom_intake
+        )
 
         if self._compiled_graph is None:
             final_state = self._invoke_local_graph(initial_state)
